@@ -2,27 +2,30 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
   HeatGame,
   StructureType,
-  STRUCTURE_STATS,
+  Tier,
+  UpgradeType,
+  SecretUpgradeType,
   GRID_SIZE,
   GameEvent,
 } from './HeatGame.js';
+import { getStructureCost, STRUCTURE_BASE_STATS } from './BalanceConfig.js';
 
 /**
  * Build a heat trap that causes meltdown - 2 fuel rods surrounded by insulation
  */
 function buildMeltdownTrap(game: HeatGame, centerX = 8, centerY = 8): void {
-  game.build(centerX, centerY, StructureType.FuelRod);
-  game.build(centerX, centerY + 1, StructureType.FuelRod);
+  game.build(centerX, centerY, StructureType.FuelRod, Tier.T1);
+  game.build(centerX, centerY + 1, StructureType.FuelRod, Tier.T1);
   // Surround with insulation to trap heat
   for (const [dx, dy] of [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [1, 1], [-1, 2], [0, 2], [1, 2]]) {
-    game.build(centerX + dx, centerY + dy, StructureType.InsulationPlate);
+    game.build(centerX + dx, centerY + dy, StructureType.Insulator, Tier.T1);
   }
 }
 
 /**
  * Run ticks until meltdown occurs or max iterations reached
  */
-function runUntilMeltdown(game: HeatGame, maxTicks = 500): void {
+function runUntilMeltdown(game: HeatGame, maxTicks = 1000): void {
   for (let i = 0; i < maxTicks && game.getMeltdownCount() === 0; i++) {
     game.tick();
   }
@@ -59,6 +62,11 @@ describe('HeatGame', () => {
       expect(game2.getMoney()).toBe(500);
     });
 
+    it('should start with zero by default (new economy)', () => {
+      const defaultGame = new HeatGame();
+      expect(defaultGame.getMoney()).toBe(0);
+    });
+
     it('should start with zero meltdowns', () => {
       expect(game.getMeltdownCount()).toBe(0);
     });
@@ -70,8 +78,8 @@ describe('HeatGame', () => {
 
   describe('building structures', () => {
     it('should allow building on empty cells with enough money', () => {
-      expect(game.canBuild(0, 0, StructureType.FuelRod)).toBe(true);
-      expect(game.build(0, 0, StructureType.FuelRod)).toBe(true);
+      expect(game.canBuild(0, 0, StructureType.FuelRod, Tier.T1)).toBe(true);
+      expect(game.build(0, 0, StructureType.FuelRod, Tier.T1)).toBe(true);
 
       const cell = game.getCell(0, 0);
       expect(cell?.structure).toBe(StructureType.FuelRod);
@@ -79,39 +87,39 @@ describe('HeatGame', () => {
 
     it('should deduct money when building', () => {
       const initialMoney = game.getMoney();
-      const cost = STRUCTURE_STATS[StructureType.FuelRod].cost;
+      const cost = getStructureCost(StructureType.FuelRod, Tier.T1);
 
-      game.build(0, 0, StructureType.FuelRod);
+      game.build(0, 0, StructureType.FuelRod, Tier.T1);
 
       expect(game.getMoney()).toBe(initialMoney - cost);
     });
 
     it('should not allow building on occupied cells', () => {
-      game.build(0, 0, StructureType.FuelRod);
+      game.build(0, 0, StructureType.FuelRod, Tier.T1);
 
-      expect(game.canBuild(0, 0, StructureType.Ventilator)).toBe(false);
-      expect(game.build(0, 0, StructureType.Ventilator)).toBe(false);
+      expect(game.canBuild(0, 0, StructureType.Ventilator, Tier.T1)).toBe(false);
+      expect(game.build(0, 0, StructureType.Ventilator, Tier.T1)).toBe(false);
     });
 
     it('should not allow building without enough money', () => {
-      const poorGame = new HeatGame(10); // Not enough for any structure
+      const poorGame = new HeatGame(5); // Not enough for T1 fuel rod (10)
 
-      expect(poorGame.canBuild(0, 0, StructureType.FuelRod)).toBe(false);
-      expect(poorGame.build(0, 0, StructureType.FuelRod)).toBe(false);
+      expect(poorGame.canBuild(0, 0, StructureType.FuelRod, Tier.T1)).toBe(false);
+      expect(poorGame.build(0, 0, StructureType.FuelRod, Tier.T1)).toBe(false);
     });
 
     it('should not allow building outside grid bounds', () => {
-      expect(game.canBuild(-1, 0, StructureType.FuelRod)).toBe(false);
-      expect(game.canBuild(0, -1, StructureType.FuelRod)).toBe(false);
-      expect(game.canBuild(GRID_SIZE, 0, StructureType.FuelRod)).toBe(false);
-      expect(game.canBuild(0, GRID_SIZE, StructureType.FuelRod)).toBe(false);
+      expect(game.canBuild(-1, 0, StructureType.FuelRod, Tier.T1)).toBe(false);
+      expect(game.canBuild(0, -1, StructureType.FuelRod, Tier.T1)).toBe(false);
+      expect(game.canBuild(GRID_SIZE, 0, StructureType.FuelRod, Tier.T1)).toBe(false);
+      expect(game.canBuild(0, GRID_SIZE, StructureType.FuelRod, Tier.T1)).toBe(false);
     });
 
     it('should emit event when building', () => {
       const events: GameEvent[] = [];
       game.addEventListener((event) => events.push(event));
 
-      game.build(5, 5, StructureType.Turbine);
+      game.build(5, 5, StructureType.Turbine, Tier.T1);
 
       expect(events.length).toBe(1);
       expect(events[0].type).toBe('structure_built');
@@ -119,19 +127,34 @@ describe('HeatGame', () => {
       expect(events[0].y).toBe(5);
       expect(events[0].structure).toBe(StructureType.Turbine);
     });
+
+    it('should support tiered items with higher costs', () => {
+      const t1Cost = getStructureCost(StructureType.FuelRod, Tier.T1);
+      const t2Cost = getStructureCost(StructureType.FuelRod, Tier.T2);
+
+      expect(t2Cost).toBeGreaterThan(t1Cost);
+      expect(t2Cost).toBe(t1Cost * 10); // T2 is 10x more expensive
+    });
+
+    it('should set lifetime for fuel rods', () => {
+      game.build(5, 5, StructureType.FuelRod, Tier.T1);
+      const cell = game.getCell(5, 5);
+
+      expect(cell?.lifetime).toBeGreaterThan(0);
+    });
   });
 
   describe('demolishing structures', () => {
     it('should allow demolishing structures', () => {
-      game.build(0, 0, StructureType.FuelRod);
+      game.build(0, 0, StructureType.FuelRod, Tier.T1);
       expect(game.demolish(0, 0)).toBe(true);
 
       const cell = game.getCell(0, 0);
       expect(cell?.structure).toBe(StructureType.Empty);
     });
 
-    it('should not refund money when demolishing', () => {
-      game.build(0, 0, StructureType.FuelRod);
+    it('should not refund money when demolishing (without salvage upgrade)', () => {
+      game.build(0, 0, StructureType.FuelRod, Tier.T1);
       const moneyAfterBuild = game.getMoney();
 
       game.demolish(0, 0);
@@ -140,7 +163,7 @@ describe('HeatGame', () => {
     });
 
     it('should reset heat when demolishing', () => {
-      game.build(0, 0, StructureType.FuelRod);
+      game.build(0, 0, StructureType.FuelRod, Tier.T1);
       game.tick(); // Generate some heat
 
       const cellBefore = game.getCell(0, 0);
@@ -157,7 +180,7 @@ describe('HeatGame', () => {
     });
 
     it('should emit event when demolishing', () => {
-      game.build(0, 0, StructureType.Ventilator);
+      game.build(0, 0, StructureType.Ventilator, Tier.T1);
 
       const events: GameEvent[] = [];
       game.addEventListener((event) => events.push(event));
@@ -168,11 +191,24 @@ describe('HeatGame', () => {
       expect(events[0].type).toBe('structure_destroyed');
       expect(events[0].structure).toBe(StructureType.Ventilator);
     });
+
+    it('should track demolish count for salvage unlock', () => {
+      game.build(0, 0, StructureType.Ventilator, Tier.T1);
+      game.build(1, 0, StructureType.Ventilator, Tier.T1);
+
+      expect(game.getStats().demolishCount).toBe(0);
+
+      game.demolish(0, 0);
+      expect(game.getStats().demolishCount).toBe(1);
+
+      game.demolish(1, 0);
+      expect(game.getStats().demolishCount).toBe(2);
+    });
   });
 
   describe('heat generation', () => {
     it('should generate heat from fuel rods each tick', () => {
-      game.build(8, 8, StructureType.FuelRod);
+      game.build(8, 8, StructureType.FuelRod, Tier.T1);
 
       game.tick();
 
@@ -181,7 +217,7 @@ describe('HeatGame', () => {
     });
 
     it('should accumulate heat over multiple ticks', () => {
-      game.build(8, 8, StructureType.FuelRod);
+      game.build(8, 8, StructureType.FuelRod, Tier.T1);
 
       game.tick();
       const heatAfterOne = game.getCell(8, 8)?.heat ?? 0;
@@ -201,11 +237,89 @@ describe('HeatGame', () => {
       game.tick();
       expect(game.getTickCount()).toBe(2);
     });
+
+    it('should generate more heat with adjacent fuel rods (adjacency bonus)', () => {
+      // Single fuel rod
+      const game1 = new HeatGame(1000);
+      game1.build(8, 8, StructureType.FuelRod, Tier.T1);
+      game1.tick();
+      const singleHeat = game1.getCell(8, 8)?.heat ?? 0;
+
+      // Two adjacent fuel rods
+      const game2 = new HeatGame(1000);
+      game2.build(8, 8, StructureType.FuelRod, Tier.T1);
+      game2.build(8, 9, StructureType.FuelRod, Tier.T1);
+      game2.tick();
+      const adjacentHeat = game2.getCell(8, 8)?.heat ?? 0;
+
+      expect(adjacentHeat).toBeGreaterThan(singleHeat);
+    });
+  });
+
+  describe('fuel rod lifetime', () => {
+    it('should deplete fuel rod lifetime each tick', () => {
+      game.build(8, 8, StructureType.FuelRod, Tier.T1);
+      const initialLifetime = game.getCell(8, 8)?.lifetime ?? 0;
+
+      game.tick();
+
+      const lifetimeAfterTick = game.getCell(8, 8)?.lifetime ?? 0;
+      expect(lifetimeAfterTick).toBe(initialLifetime - 1);
+    });
+
+    it('should stop generating heat when fuel is depleted', () => {
+      game.build(8, 8, StructureType.FuelRod, Tier.T1);
+      const initialLifetime = game.getCell(8, 8)?.lifetime ?? 0;
+
+      // Run until fuel is depleted
+      for (let i = 0; i < initialLifetime + 5; i++) {
+        game.tick();
+      }
+
+      const cell = game.getCell(8, 8);
+      expect(cell?.lifetime).toBe(0);
+
+      // Heat should stabilize/decrease after depletion (no more generation)
+      const heatBefore = cell?.heat ?? 0;
+      game.tick();
+      const heatAfter = game.getCell(8, 8)?.heat ?? 0;
+
+      // Heat should not increase (may decrease due to transfer/dissipation)
+      expect(heatAfter).toBeLessThanOrEqual(heatBefore);
+    });
+
+    it('should emit fuel_depleted event', () => {
+      game.build(8, 8, StructureType.FuelRod, Tier.T1);
+      const initialLifetime = game.getCell(8, 8)?.lifetime ?? 0;
+
+      const events: GameEvent[] = [];
+      game.addEventListener((event) => events.push(event));
+
+      // Run until fuel is depleted
+      for (let i = 0; i < initialLifetime + 1; i++) {
+        game.tick();
+      }
+
+      const depletedEvents = events.filter(e => e.type === 'fuel_depleted');
+      expect(depletedEvents.length).toBe(1);
+    });
+
+    it('should have longer lifetime for higher tiers', () => {
+      const game1 = new HeatGame(10000);
+      game1.build(0, 0, StructureType.FuelRod, Tier.T1);
+      const t1Lifetime = game1.getCell(0, 0)?.lifetime ?? 0;
+
+      const game2 = new HeatGame(10000);
+      game2.build(0, 0, StructureType.FuelRod, Tier.T2);
+      const t2Lifetime = game2.getCell(0, 0)?.lifetime ?? 0;
+
+      expect(t2Lifetime).toBeGreaterThan(t1Lifetime);
+    });
   });
 
   describe('heat transfer', () => {
     it('should transfer heat to neighboring cells', () => {
-      game.build(8, 8, StructureType.FuelRod);
+      game.build(8, 8, StructureType.FuelRod, Tier.T1);
 
       // Run several ticks to allow heat to spread
       for (let i = 0; i < 10; i++) {
@@ -217,7 +331,7 @@ describe('HeatGame', () => {
     });
 
     it('should not transfer heat diagonally', () => {
-      game.build(8, 8, StructureType.FuelRod);
+      game.build(8, 8, StructureType.FuelRod, Tier.T1);
 
       // Run ticks but heat should flow to orthogonal neighbors first
       for (let i = 0; i < 5; i++) {
@@ -230,13 +344,34 @@ describe('HeatGame', () => {
 
       expect(orthogonal).toBeGreaterThan(diagonal);
     });
+
+    it('should transfer heat slower through insulators', () => {
+      // Test with insulator
+      const gameWithInsulator = new HeatGame(1000);
+      gameWithInsulator.build(8, 8, StructureType.FuelRod, Tier.T1);
+      gameWithInsulator.build(8, 9, StructureType.Insulator, Tier.T1);
+
+      // Test without insulator
+      const gameWithoutInsulator = new HeatGame(1000);
+      gameWithoutInsulator.build(8, 8, StructureType.FuelRod, Tier.T1);
+
+      for (let i = 0; i < 10; i++) {
+        gameWithInsulator.tick();
+        gameWithoutInsulator.tick();
+      }
+
+      const heatWithInsulator = gameWithInsulator.getCell(8, 10)?.heat ?? 0;
+      const heatWithoutInsulator = gameWithoutInsulator.getCell(8, 10)?.heat ?? 0;
+
+      expect(heatWithInsulator).toBeLessThan(heatWithoutInsulator);
+    });
   });
 
   describe('heat dissipation', () => {
     it('should dissipate heat with ventilators', () => {
       // Place a fuel rod and ventilator nearby
-      game.build(8, 8, StructureType.FuelRod);
-      game.build(8, 9, StructureType.Ventilator);
+      game.build(8, 8, StructureType.FuelRod, Tier.T1);
+      game.build(8, 9, StructureType.Ventilator, Tier.T1);
 
       // Generate heat
       for (let i = 0; i < 5; i++) {
@@ -253,8 +388,8 @@ describe('HeatGame', () => {
 
   describe('power generation', () => {
     it('should generate power from turbines when there is heat', () => {
-      game.build(8, 8, StructureType.FuelRod);
-      game.build(8, 9, StructureType.Turbine);
+      game.build(8, 8, StructureType.FuelRod, Tier.T1);
+      game.build(8, 9, StructureType.Turbine, Tier.T1);
 
       // Run several ticks to transfer heat to turbine
       for (let i = 0; i < 20; i++) {
@@ -265,9 +400,9 @@ describe('HeatGame', () => {
     });
 
     it('should sell power through substations', () => {
-      game.build(8, 8, StructureType.FuelRod);
-      game.build(8, 9, StructureType.Turbine);
-      game.build(8, 10, StructureType.Substation);
+      game.build(8, 8, StructureType.FuelRod, Tier.T1);
+      game.build(8, 9, StructureType.Turbine, Tier.T1);
+      game.build(8, 10, StructureType.Substation, Tier.T1);
 
       const initialMoney = game.getMoney();
 
@@ -281,9 +416,9 @@ describe('HeatGame', () => {
     });
 
     it('should emit power_sold events', () => {
-      game.build(8, 8, StructureType.FuelRod);
-      game.build(8, 9, StructureType.Turbine);
-      game.build(8, 10, StructureType.Substation);
+      game.build(8, 8, StructureType.FuelRod, Tier.T1);
+      game.build(8, 9, StructureType.Turbine, Tier.T1);
+      game.build(8, 10, StructureType.Substation, Tier.T1);
 
       const events: GameEvent[] = [];
       game.addEventListener((event) => events.push(event));
@@ -298,6 +433,35 @@ describe('HeatGame', () => {
     });
   });
 
+  describe('manual power generation', () => {
+    it('should give money when clicking manual generate', () => {
+      const initialMoney = game.getMoney();
+      const earned = game.manualGenerate();
+
+      expect(earned).toBeGreaterThan(0);
+      expect(game.getMoney()).toBe(initialMoney + earned);
+    });
+
+    it('should track manual clicks', () => {
+      expect(game.getStats().manualClicks).toBe(0);
+
+      game.manualGenerate();
+      expect(game.getStats().manualClicks).toBe(1);
+
+      game.manualGenerate();
+      expect(game.getStats().manualClicks).toBe(2);
+    });
+
+    it('should emit manual_click event', () => {
+      const events: GameEvent[] = [];
+      game.addEventListener((event) => events.push(event));
+
+      game.manualGenerate();
+
+      expect(events.filter(e => e.type === 'manual_click')).toHaveLength(1);
+    });
+  });
+
   describe('meltdown', () => {
     it('should trigger meltdown when fuel rod overheats', () => {
       buildMeltdownTrap(game);
@@ -307,7 +471,7 @@ describe('HeatGame', () => {
 
     it('should clear all structures on meltdown', () => {
       buildMeltdownTrap(game);
-      game.build(15, 15, StructureType.Ventilator); // Far away structure
+      game.build(15, 15, StructureType.Ventilator, Tier.T1); // Far away structure
       runUntilMeltdown(game);
 
       const grid = game.getGridSnapshot();
@@ -320,12 +484,12 @@ describe('HeatGame', () => {
 
     it('should keep money after meltdown', () => {
       // Earn money with a safe setup first
-      game.build(2, 8, StructureType.FuelRod);
-      game.build(2, 9, StructureType.Turbine);
-      game.build(2, 10, StructureType.Substation);
-      game.build(2, 7, StructureType.Ventilator);
+      game.build(2, 8, StructureType.FuelRod, Tier.T1);
+      game.build(2, 9, StructureType.Turbine, Tier.T1);
+      game.build(2, 10, StructureType.Substation, Tier.T1);
+      game.build(2, 7, StructureType.Ventilator, Tier.T1);
 
-      for (let i = 0; i < 30; i++) game.tick();
+      for (let i = 0; i < 15; i++) game.tick(); // Reduced ticks since fuel depletes
       const moneyBeforeMeltdown = game.getMoney();
 
       buildMeltdownTrap(game);
@@ -343,12 +507,82 @@ describe('HeatGame', () => {
 
       expect(events.filter(e => e.type === 'meltdown')).toHaveLength(1);
     });
+
+    it('should melt non-fuel structures when they overheat', () => {
+      // Substation has low melt temp (80C)
+      game.build(8, 8, StructureType.FuelRod, Tier.T1);
+      game.build(8, 9, StructureType.Substation, Tier.T1);
+
+      const events: GameEvent[] = [];
+      game.addEventListener((event) => events.push(event));
+
+      // Run until substation melts
+      for (let i = 0; i < 100; i++) {
+        game.tick();
+        if (game.getCell(8, 9)?.structure === StructureType.Empty) break;
+      }
+
+      const meltEvents = events.filter(e => e.type === 'structure_melted');
+      expect(meltEvents.length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  describe('upgrades', () => {
+    it('should allow purchasing upgrades', () => {
+      const cost = game.getUpgradeCost(UpgradeType.ManualClickPower);
+
+      expect(game.getUpgradeLevel(UpgradeType.ManualClickPower)).toBe(0);
+      expect(game.canPurchaseUpgrade(UpgradeType.ManualClickPower)).toBe(true);
+
+      game.purchaseUpgrade(UpgradeType.ManualClickPower);
+
+      expect(game.getUpgradeLevel(UpgradeType.ManualClickPower)).toBe(1);
+      expect(game.getMoney()).toBe(1000 - cost);
+    });
+
+    it('should increase upgrade cost with level', () => {
+      const cost1 = game.getUpgradeCost(UpgradeType.ManualClickPower);
+      game.purchaseUpgrade(UpgradeType.ManualClickPower);
+      const cost2 = game.getUpgradeCost(UpgradeType.ManualClickPower);
+
+      expect(cost2).toBeGreaterThan(cost1);
+    });
+
+    it('should improve manual click power with upgrades', () => {
+      const base = game.manualGenerate();
+      game.purchaseUpgrade(UpgradeType.ManualClickPower);
+      const upgraded = game.manualGenerate();
+
+      expect(upgraded).toBeGreaterThan(base);
+    });
+  });
+
+  describe('secret upgrades', () => {
+    it('should unlock exotic fuel after first meltdown', () => {
+      expect(game.isSecretUnlocked(SecretUpgradeType.ExoticFuel)).toBe(false);
+
+      buildMeltdownTrap(game);
+      runUntilMeltdown(game);
+
+      expect(game.isSecretUnlocked(SecretUpgradeType.ExoticFuel)).toBe(true);
+    });
+
+    it('should emit secret_unlocked event', () => {
+      const events: GameEvent[] = [];
+      game.addEventListener((event) => events.push(event));
+
+      buildMeltdownTrap(game);
+      runUntilMeltdown(game);
+
+      const unlockEvents = events.filter(e => e.type === 'secret_unlocked');
+      expect(unlockEvents.length).toBeGreaterThan(0);
+    });
   });
 
   describe('serialization', () => {
     it('should serialize and deserialize game state', () => {
-      game.build(5, 5, StructureType.FuelRod);
-      game.build(6, 5, StructureType.Turbine);
+      game.build(5, 5, StructureType.FuelRod, Tier.T1);
+      game.build(6, 5, StructureType.Turbine, Tier.T1);
 
       for (let i = 0; i < 10; i++) {
         game.tick();
@@ -362,6 +596,16 @@ describe('HeatGame', () => {
       expect(restored.getCell(5, 5)?.structure).toBe(StructureType.FuelRod);
       expect(restored.getCell(6, 5)?.structure).toBe(StructureType.Turbine);
     });
+
+    it('should preserve upgrade state', () => {
+      game.purchaseUpgrade(UpgradeType.ManualClickPower);
+      game.purchaseUpgrade(UpgradeType.ManualClickPower);
+
+      const serialized = game.serialize();
+      const restored = HeatGame.deserialize(serialized);
+
+      expect(restored.getUpgradeLevel(UpgradeType.ManualClickPower)).toBe(2);
+    });
   });
 
   describe('event system', () => {
@@ -370,11 +614,11 @@ describe('HeatGame', () => {
       const listener = (event: GameEvent) => events.push(event);
 
       game.addEventListener(listener);
-      game.build(0, 0, StructureType.FuelRod);
+      game.build(0, 0, StructureType.FuelRod, Tier.T1);
       expect(events.length).toBe(1);
 
       game.removeEventListener(listener);
-      game.build(1, 0, StructureType.Ventilator);
+      game.build(1, 0, StructureType.Ventilator, Tier.T1);
       expect(events.length).toBe(1); // Should not have increased
     });
   });
@@ -388,7 +632,7 @@ describe('HeatGame', () => {
     });
 
     it('should return a copy of the cell (not the original)', () => {
-      game.build(5, 5, StructureType.FuelRod);
+      game.build(5, 5, StructureType.FuelRod, Tier.T1);
       const cell = game.getCell(5, 5);
 
       if (cell) {

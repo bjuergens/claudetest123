@@ -173,9 +173,9 @@ export const STRUCTURE_BASE_STATS: Record<StructureType, StructureBaseStats> = {
   [StructureType.FuelRod]: {
     name: 'Fuel Rod',
     baseCost: 10,
-    meltTemp: 5000,
+    meltTemp: 2500, // Lowered to make meltdowns achievable with clustered fuel
     conductivity: 1.5,
-    heatGeneration: 10, // T1: 10 heat/tick, T2: 100 heat/tick, etc.
+    heatGeneration: 100, // T1: 100 heat/tick - high enough to cause meltdowns when clustered
     heatDissipation: 0,
     powerGeneration: 0,
     maxHeatConsumption: 0,
