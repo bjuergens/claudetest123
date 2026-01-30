@@ -1,11 +1,5 @@
 /**
  * Heat Management Game - UI/Rendering
- *
- * This class handles all visual presentation:
- * - Grid rendering with heat visualization
- * - Structure sprites/icons
- * - UI panels (money, stats, build menu)
- * - Animations and visual effects
  */
 
 import {
@@ -359,9 +353,6 @@ export class HeatGameRenderer {
   }
 
   private showMeltdownAnimation(): void {
-    // Flash the canvas red
-    const originalFill = this.ctx.fillStyle;
-
     let flashes = 0;
     const flashInterval = setInterval(() => {
       if (flashes >= 6) {
@@ -379,8 +370,6 @@ export class HeatGameRenderer {
 
       flashes++;
     }, 100);
-
-    this.ctx.fillStyle = originalFill;
   }
 
   // Configuration

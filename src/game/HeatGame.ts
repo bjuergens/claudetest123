@@ -1,15 +1,11 @@
 /**
  * Heat Management Game - Core Game Logic
- *
- * This class handles all game state and simulation:
- * - 16x16 grid management
- * - Heat transfer calculations
- * - Structure placement and destruction
- * - Power generation and economy
- * - Meltdown detection
  */
 
-export const GRID_SIZE = 16;
+import { GRID_SIZE } from '../constants.js';
+
+// Re-export for backward compatibility
+export { GRID_SIZE };
 
 export enum StructureType {
   Empty = 'empty',

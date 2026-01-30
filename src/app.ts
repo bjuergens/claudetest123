@@ -1,5 +1,6 @@
 import { HeatGame, StructureType } from './game/HeatGame.js';
 import { HeatGameRenderer } from './game/HeatGameRenderer.js';
+import { CELL_SIZE, GRID_PADDING, TICK_INTERVAL } from './constants.js';
 
 // PWA Install Prompt interface (not in standard lib.dom.d.ts)
 interface BeforeInstallPromptEvent extends Event {
@@ -55,7 +56,6 @@ if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js')
       .then((registration) => {
-        console.log('Service Worker registered:', registration.scope);
         updatePWAStatus('Registered');
 
         // Check for updates on registration
@@ -63,12 +63,8 @@ if ('serviceWorker' in navigator) {
           const newWorker = registration.installing;
           if (!newWorker) return;
 
-          console.log('SW: Update found, new worker installing...');
-
           newWorker.addEventListener('statechange', () => {
             if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-              // New SW is installed but waiting
-              console.log('SW: New version available');
               waitingServiceWorker = newWorker;
               showUpdateButton();
               updatePWAStatus('Update available');
@@ -83,16 +79,12 @@ if ('serviceWorker' in navigator) {
           updatePWAStatus('Update available');
         }
       })
-      .catch((error) => {
-        console.error('Service Worker registration failed:', error);
+      .catch(() => {
         updatePWAStatus('Registration failed');
       });
 
     // When new SW takes over, show reload banner instead of auto-reloading
-    navigator.serviceWorker.addEventListener('controllerchange', () => {
-      console.log('SW: Controller changed, showing reload banner');
-      showReloadBanner();
-    });
+    navigator.serviceWorker.addEventListener('controllerchange', showReloadBanner);
   });
 }
 
@@ -166,8 +158,6 @@ if (installButton) {
     await deferredPrompt.prompt();
     const { outcome } = await deferredPrompt.userChoice;
 
-    console.log(`User response to install prompt: ${outcome}`);
-
     if (outcome === 'accepted') {
       updatePWAStatus('Installed');
     }
@@ -180,7 +170,6 @@ if (installButton) {
 }
 
 window.addEventListener('appinstalled', () => {
-  console.log('PWA was installed');
   updatePWAStatus('Installed');
   deferredPrompt = null;
 });
@@ -194,23 +183,16 @@ window.addEventListener('load', () => {
   }
 });
 
-// ============================================
-// Game Initialization
-// ============================================
-
 function initGame(): void {
-  if (!canvas) {
-    console.error('Game canvas not found');
-    return;
-  }
+  if (!canvas) return;
 
   // Create game instance
   const game = new HeatGame(500);
 
   // Create renderer
   const renderer = new HeatGameRenderer(game, canvas, {
-    cellSize: 28,
-    gridPadding: 8,
+    cellSize: CELL_SIZE,
+    gridPadding: GRID_PADDING,
   });
 
   // Setup UI if container exists
@@ -233,7 +215,6 @@ function initGame(): void {
   });
 
   // Game loop
-  const TICK_INTERVAL = 100; // ms per tick
   let lastTick = 0;
 
   function gameLoop(timestamp: number): void {
@@ -249,8 +230,6 @@ function initGame(): void {
 
   // Start the game loop
   requestAnimationFrame(gameLoop);
-
-  console.log('Heat Management Game initialized');
 }
 
 // Start game when DOM is ready
