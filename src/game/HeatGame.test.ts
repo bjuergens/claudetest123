@@ -7,11 +7,32 @@ import {
   GameEvent,
 } from './HeatGame.js';
 
+/**
+ * Build a heat trap that causes meltdown - 2 fuel rods surrounded by insulation
+ */
+function buildMeltdownTrap(game: HeatGame, centerX = 8, centerY = 8): void {
+  game.build(centerX, centerY, StructureType.FuelRod);
+  game.build(centerX, centerY + 1, StructureType.FuelRod);
+  // Surround with insulation to trap heat
+  for (const [dx, dy] of [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [1, 1], [-1, 2], [0, 2], [1, 2]]) {
+    game.build(centerX + dx, centerY + dy, StructureType.InsulationPlate);
+  }
+}
+
+/**
+ * Run ticks until meltdown occurs or max iterations reached
+ */
+function runUntilMeltdown(game: HeatGame, maxTicks = 500): void {
+  for (let i = 0; i < maxTicks && game.getMeltdownCount() === 0; i++) {
+    game.tick();
+  }
+}
+
 describe('HeatGame', () => {
   let game: HeatGame;
 
   beforeEach(() => {
-    game = new HeatGame(1000); // Start with 1000 money for testing
+    game = new HeatGame(1000);
   });
 
   describe('initialization', () => {
@@ -279,55 +300,16 @@ describe('HeatGame', () => {
 
   describe('meltdown', () => {
     it('should trigger meltdown when fuel rod overheats', () => {
-      // Create fuel rods in the center completely surrounded by insulation to trap heat
-      // This prevents heat from escaping to the environment
-      game.build(8, 8, StructureType.FuelRod);
-      game.build(8, 9, StructureType.FuelRod); // Second fuel rod for more heat
-      // Surround with insulation to trap heat
-      game.build(7, 7, StructureType.InsulationPlate);
-      game.build(8, 7, StructureType.InsulationPlate);
-      game.build(9, 7, StructureType.InsulationPlate);
-      game.build(7, 8, StructureType.InsulationPlate);
-      game.build(9, 8, StructureType.InsulationPlate);
-      game.build(7, 9, StructureType.InsulationPlate);
-      game.build(9, 9, StructureType.InsulationPlate);
-      game.build(7, 10, StructureType.InsulationPlate);
-      game.build(8, 10, StructureType.InsulationPlate);
-      game.build(9, 10, StructureType.InsulationPlate);
-
-      // Run many ticks until meltdown
-      for (let i = 0; i < 500; i++) {
-        game.tick();
-        if (game.getMeltdownCount() > 0) break;
-      }
-
+      buildMeltdownTrap(game);
+      runUntilMeltdown(game);
       expect(game.getMeltdownCount()).toBe(1);
     });
 
     it('should clear all structures on meltdown', () => {
-      // Same setup as above
-      game.build(8, 8, StructureType.FuelRod);
-      game.build(8, 9, StructureType.FuelRod);
-      game.build(7, 7, StructureType.InsulationPlate);
-      game.build(8, 7, StructureType.InsulationPlate);
-      game.build(9, 7, StructureType.InsulationPlate);
-      game.build(7, 8, StructureType.InsulationPlate);
-      game.build(9, 8, StructureType.InsulationPlate);
-      game.build(7, 9, StructureType.InsulationPlate);
-      game.build(9, 9, StructureType.InsulationPlate);
-      game.build(7, 10, StructureType.InsulationPlate);
-      game.build(8, 10, StructureType.InsulationPlate);
-      game.build(9, 10, StructureType.InsulationPlate);
-      // Add a structure far away that should also be destroyed
-      game.build(15, 15, StructureType.Ventilator);
+      buildMeltdownTrap(game);
+      game.build(15, 15, StructureType.Ventilator); // Far away structure
+      runUntilMeltdown(game);
 
-      // Run until meltdown
-      for (let i = 0; i < 500; i++) {
-        game.tick();
-        if (game.getMeltdownCount() > 0) break;
-      }
-
-      // All structures should be gone
       const grid = game.getGridSnapshot();
       for (let y = 0; y < GRID_SIZE; y++) {
         for (let x = 0; x < GRID_SIZE; x++) {
@@ -337,38 +319,18 @@ describe('HeatGame', () => {
     });
 
     it('should keep money after meltdown', () => {
-      // Earn some money first with a safe setup
+      // Earn money with a safe setup first
       game.build(2, 8, StructureType.FuelRod);
       game.build(2, 9, StructureType.Turbine);
       game.build(2, 10, StructureType.Substation);
       game.build(2, 7, StructureType.Ventilator);
 
-      for (let i = 0; i < 30; i++) {
-        game.tick();
-      }
-
+      for (let i = 0; i < 30; i++) game.tick();
       const moneyBeforeMeltdown = game.getMoney();
 
-      // Now cause meltdown with trapped fuel rods in center
-      game.build(8, 8, StructureType.FuelRod);
-      game.build(8, 9, StructureType.FuelRod);
-      game.build(7, 7, StructureType.InsulationPlate);
-      game.build(8, 7, StructureType.InsulationPlate);
-      game.build(9, 7, StructureType.InsulationPlate);
-      game.build(7, 8, StructureType.InsulationPlate);
-      game.build(9, 8, StructureType.InsulationPlate);
-      game.build(7, 9, StructureType.InsulationPlate);
-      game.build(9, 9, StructureType.InsulationPlate);
-      game.build(7, 10, StructureType.InsulationPlate);
-      game.build(8, 10, StructureType.InsulationPlate);
-      game.build(9, 10, StructureType.InsulationPlate);
+      buildMeltdownTrap(game);
+      runUntilMeltdown(game);
 
-      for (let i = 0; i < 500; i++) {
-        game.tick();
-        if (game.getMeltdownCount() > 0) break;
-      }
-
-      // Money should be preserved (might have earned a bit more before meltdown)
       expect(game.getMoney()).toBeGreaterThanOrEqual(moneyBeforeMeltdown - 500);
     });
 
@@ -376,26 +338,10 @@ describe('HeatGame', () => {
       const events: GameEvent[] = [];
       game.addEventListener((event) => events.push(event));
 
-      game.build(8, 8, StructureType.FuelRod);
-      game.build(8, 9, StructureType.FuelRod);
-      game.build(7, 7, StructureType.InsulationPlate);
-      game.build(8, 7, StructureType.InsulationPlate);
-      game.build(9, 7, StructureType.InsulationPlate);
-      game.build(7, 8, StructureType.InsulationPlate);
-      game.build(9, 8, StructureType.InsulationPlate);
-      game.build(7, 9, StructureType.InsulationPlate);
-      game.build(9, 9, StructureType.InsulationPlate);
-      game.build(7, 10, StructureType.InsulationPlate);
-      game.build(8, 10, StructureType.InsulationPlate);
-      game.build(9, 10, StructureType.InsulationPlate);
+      buildMeltdownTrap(game);
+      runUntilMeltdown(game);
 
-      for (let i = 0; i < 500; i++) {
-        game.tick();
-        if (game.getMeltdownCount() > 0) break;
-      }
-
-      const meltdownEvents = events.filter(e => e.type === 'meltdown');
-      expect(meltdownEvents.length).toBe(1);
+      expect(events.filter(e => e.type === 'meltdown')).toHaveLength(1);
     });
   });
 

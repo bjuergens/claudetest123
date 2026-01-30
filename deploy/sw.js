@@ -17,13 +17,8 @@ const urlsToCache = [
 // Install event - cache resources
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then((cache) => {
-        console.log('SW: Caching app shell');
-        return cache.addAll(urlsToCache);
-      })
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(urlsToCache))
   );
-  // Don't call skipWaiting() - let the app control when to update
 });
 
 // Fetch event - serve from cache, fallback to network
@@ -58,23 +53,17 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((cacheNames) => {
       return Promise.all(
-        cacheNames.map((cacheName) => {
-          if (cacheName !== CACHE_NAME) {
-            console.log('SW: Deleting old cache:', cacheName);
-            return caches.delete(cacheName);
-          }
-        })
+        cacheNames
+          .filter((cacheName) => cacheName !== CACHE_NAME)
+          .map((cacheName) => caches.delete(cacheName))
       );
     })
   );
-  // Don't call clients.claim() - let the page control when to use the new SW
-  // This prevents automatic reload on first install
 });
 
 // Listen for skip waiting message from the app
 self.addEventListener('message', (event) => {
-  if (event.data && event.data.type === 'SKIP_WAITING') {
-    console.log('SW: Received skip waiting message');
+  if (event.data?.type === 'SKIP_WAITING') {
     self.skipWaiting();
   }
 });
