@@ -4,32 +4,64 @@ This file contains instructions for Claude AI when working with this project.
 
 ## Project Overview
 
-This is an Idle Game PWA (Progressive Web App) project.
+This is a **Heat Management Idle Game** - a PWA where players manage heat flow on a 16x16 grid to generate power and money. See `GAME_VISION.md` for the full game design document.
 
 ## Project Structure
 
 ```
 .
-├── deploy/              # GitHub Pages deployment folder
+├── src/                 # TypeScript source files
+│   ├── app.ts           # PWA setup and registration
+│   └── game/            # Game-specific code
+│       ├── HeatGame.ts          # Core game logic (grid, heat, economy)
+│       ├── HeatGame.test.ts     # Unit tests for game logic
+│       └── HeatGameRenderer.ts  # UI/rendering (canvas, overlays)
+├── deploy/              # GitHub Pages deployment folder (compiled output)
 │   ├── index.html       # Main HTML file with PWA meta tags
 │   ├── manifest.json    # PWA manifest configuration
 │   ├── sw.js            # Service Worker for offline functionality
-│   ├── app.js           # App logic and PWA registration
 │   ├── styles.css       # Styling
-│   ├── .nojekyll        # Disable Jekyll processing
 │   └── icons/           # App icons
-│       ├── icon-192.svg
-│       └── icon-512.svg
-├── .github/workflows/   # GitHub Actions workflows
+├── GAME_VISION.md       # Game design document
+├── vitest.config.ts     # Test configuration
+├── tsconfig.json        # TypeScript configuration
+├── package.json         # Dependencies and scripts
 ├── claude.md            # This file - Claude instructions
-├── readme.md            # Project documentation
-└── LICENSE              # License file
+└── readme.md            # Project documentation
+```
+
+## Architecture
+
+### Game Logic (`HeatGame.ts`)
+- Manages 16x16 grid of cells
+- Handles heat simulation (generation, transfer, dissipation)
+- Structure management (building, breaking, meltdowns)
+- Power generation and money economy
+- Event system for UI updates
+
+### Renderer (`HeatGameRenderer.ts`)
+- Canvas-based grid visualization
+- Heat overlay with color gradients
+- Structure rendering with symbols
+- Mouse interaction handling
+- Build menu and UI panels
+
+## Development Commands
+
+```bash
+npm install          # Install dependencies
+npm run build        # Compile TypeScript
+npm run test         # Run unit tests
+npm run test:watch   # Run tests in watch mode
+npm run dev          # Build + serve with hot reload
 ```
 
 ## Development Guidelines
 
-- All deployable web content goes in the `deploy/` folder
-- GitHub Pages automatically deploys from the `deploy/` folder on push to main/master
+- All source code goes in `src/`
+- TypeScript compiles to `deploy/` folder
+- Game logic should be tested - add tests for new features
+- Keep game logic separate from rendering (MVC pattern)
 - The PWA supports offline functionality via Service Workers
 
 ## Live Demo
