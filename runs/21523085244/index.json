@@ -1,0 +1,17 @@
+{
+  "run_id": "21523085244",
+  "run_number": "3",
+  "sha": "fbdd65e086b3c75ee3144995fce4732a22baefb7",
+  "ref": "refs/pull/7/merge",
+  "event": "pull_request",
+  "timestamp": "2026-01-30T16:44:02Z",
+  "test_outcome": "failure",
+  "files": {
+    "summary": "test-results/summary.json",
+    "results_json": "test-results/results.json",
+    "screenshots_dir": "test-results/screenshots/",
+    "logs_dir": "test-results/logs/",
+    "playwright_report": "playwright-report/"
+  },
+  "raw_base_url": "https://raw.githubusercontent.com/bjuergens/claudetest123/test-results/runs/21523085244"
+}

@@ -1,0 +1,11 @@
+{
+  "run_id": "21523085244",
+  "run_number": "3",
+  "sha": "fbdd65e086b3c75ee3144995fce4732a22baefb7",
+  "ref": "refs/pull/7/merge",
+  "event": "pull_request",
+  "actor": "bjuergens",
+  "timestamp": "2026-01-30T16:43:50Z",
+  "test_outcome": "failure",
+  "repository": "bjuergens/claudetest123"
+}

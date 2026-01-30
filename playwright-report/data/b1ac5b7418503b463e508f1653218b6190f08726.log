@@ -1,0 +1,6 @@
+[LOG] 2026-01-30T16:35:57.939Z Heat Management Game initialized
+[LOG] 2026-01-30T16:35:57.980Z Service Worker registered: http://localhost:3000/
+[LOG] 2026-01-30T16:35:57.980Z SW: Update found, new worker installing...
+[LOG] 2026-01-30T16:35:58.025Z SW: Controller changed, reloading...
+[LOG] 2026-01-30T16:35:58.047Z Heat Management Game initialized
+[LOG] 2026-01-30T16:35:58.052Z Service Worker registered: http://localhost:3000/
