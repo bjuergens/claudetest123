@@ -115,8 +115,8 @@ test.describe('Heat Game E2E Tests', () => {
   test('should place a Fuel Rod on the grid', async ({ page }, testInfo) => {
     const canvas = page.locator('#game-canvas');
 
-    // Click on the FuelRod button to select it
-    const fuelRodButton = page.getByRole('button', { name: /FuelRod/i });
+    // Click on the FuelRod button to select it (enum value is 'fuel_rod')
+    const fuelRodButton = page.getByRole('button', { name: /fuel_rod/i });
     await expect(fuelRodButton).toBeVisible();
     await fuelRodButton.click();
 
@@ -146,19 +146,19 @@ test.describe('Heat Game E2E Tests', () => {
     const canvas = page.locator('#game-canvas');
 
     // Place a Fuel Rod at (7, 7)
-    await page.getByRole('button', { name: /FuelRod/i }).click();
+    await page.getByRole('button', { name: /fuel_rod/i }).click();
     await canvas.click({ position: getCellClickPosition(7, 7) });
 
     // Place a Ventilator next to it at (6, 7) for cooling
-    await page.getByRole('button', { name: /Ventilator/i }).click();
+    await page.getByRole('button', { name: /ventilator/i }).click();
     await canvas.click({ position: getCellClickPosition(6, 7) });
 
     // Place a Turbine at (8, 7) to convert heat to power
-    await page.getByRole('button', { name: /Turbine/i }).click();
+    await page.getByRole('button', { name: /turbine/i }).click();
     await canvas.click({ position: getCellClickPosition(8, 7) });
 
     // Place a Substation at (9, 7) to sell power
-    await page.getByRole('button', { name: /Substation/i }).click();
+    await page.getByRole('button', { name: /substation/i }).click();
     await canvas.click({ position: getCellClickPosition(9, 7) });
 
     await page.screenshot({
@@ -183,7 +183,7 @@ test.describe('Heat Game E2E Tests', () => {
     const canvas = page.locator('#game-canvas');
 
     // Place a Ventilator (cheaper to test)
-    await page.getByRole('button', { name: /Ventilator/i }).click();
+    await page.getByRole('button', { name: /ventilator/i }).click();
     await canvas.click({ position: getCellClickPosition(3, 3) });
 
     // Check money after placing ($500 - $50 = $450)
@@ -212,10 +212,10 @@ test.describe('Heat Game E2E Tests', () => {
 
     // Build a small power plant setup
     const structures = [
-      { type: /Ventilator/i, x: 5, y: 7 },
-      { type: /FuelRod/i, x: 6, y: 7 },
-      { type: /Turbine/i, x: 7, y: 7 },
-      { type: /Substation/i, x: 8, y: 7 },
+      { type: /ventilator/i, x: 5, y: 7 },
+      { type: /fuel_rod/i, x: 6, y: 7 },
+      { type: /turbine/i, x: 7, y: 7 },
+      { type: /substation/i, x: 8, y: 7 },
     ];
 
     for (const s of structures) {
@@ -255,7 +255,7 @@ test.describe('Heat Game E2E Tests', () => {
       { x: 8, y: 8 },
     ];
 
-    await page.getByRole('button', { name: /FuelRod/i }).click();
+    await page.getByRole('button', { name: /fuel_rod/i }).click();
 
     for (const pos of fuelRodPositions) {
       await canvas.click({ position: getCellClickPosition(pos.x, pos.y) });
@@ -286,7 +286,7 @@ test.describe('Heat Game E2E Tests', () => {
     const canvas = page.locator('#game-canvas');
 
     // Substation costs $250, starting with $500
-    await page.getByRole('button', { name: /Substation/i }).click();
+    await page.getByRole('button', { name: /substation/i }).click();
 
     // Build 2 substations ($500 total)
     await canvas.click({ position: getCellClickPosition(1, 1) });
@@ -317,7 +317,7 @@ test.describe('Heat Game E2E Tests', () => {
     const canvas = page.locator('#game-canvas');
 
     // Select a cheaper structure
-    await page.getByRole('button', { name: /InsulationPlate/i }).click();
+    await page.getByRole('button', { name: /insulation_plate/i }).click();
 
     // Rapidly click multiple cells (limited to fit budget)
     const clicks = [];
