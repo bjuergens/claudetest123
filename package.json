@@ -10,11 +10,16 @@
     "serve": "npm run build && npx serve deploy",
     "dev": "concurrently \"tsc --watch\" \"npx serve deploy\"",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:debug": "playwright test --debug",
+    "test:e2e:report": "playwright show-report"
   },
   "devDependencies": {
-    "typescript": "^5.3.0",
+    "@playwright/test": "^1.58.0",
     "concurrently": "^8.2.0",
+    "typescript": "^5.3.0",
     "vitest": "^1.0.0"
   },
   "license": "AGPL-3.0"

@@ -1,0 +1,182 @@
+name: E2E Tests
+
+on:
+  pull_request:
+    branches:
+      - main
+      - master
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch: # Allow manual trigger
+
+# Allow the workflow to push to test-results branch
+permissions:
+  contents: write
+
+jobs:
+  e2e:
+    name: Run E2E Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build TypeScript
+        run: npm run build
+
+      - name: Install Playwright Browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run E2E tests
+        id: e2e-tests
+        run: npm run test:e2e
+        timeout-minutes: 2
+        continue-on-error: true
+
+      - name: Create test summary
+        if: always()
+        run: |
+          # Create a summary JSON file with metadata
+          mkdir -p test-results
+          cat > test-results/summary.json << EOF
+          {
+            "run_id": "${{ github.run_id }}",
+            "run_number": "${{ github.run_number }}",
+            "sha": "${{ github.sha }}",
+            "ref": "${{ github.ref }}",
+            "event": "${{ github.event_name }}",
+            "actor": "${{ github.actor }}",
+            "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "test_outcome": "${{ steps.e2e-tests.outcome }}",
+            "repository": "${{ github.repository }}"
+          }
+          EOF
+
+      - name: Upload test results artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-test-results
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 30
+
+      - name: Publish test results to branch
+        if: always()
+        run: |
+          # Configure git
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Create a unique directory name for this run
+          RUN_DIR="runs/${{ github.run_id }}"
+
+          # Save test results to a temporary location
+          mkdir -p /tmp/test-output
+          cp -r test-results /tmp/test-output/ 2>/dev/null || true
+          cp -r playwright-report /tmp/test-output/ 2>/dev/null || true
+
+          # Fetch or create the test-results branch
+          git fetch origin test-results:test-results 2>/dev/null || true
+
+          # Check if branch exists
+          if git show-ref --verify --quiet refs/heads/test-results; then
+            git checkout test-results
+          else
+            # Create orphan branch for test results
+            git checkout --orphan test-results
+            git rm -rf . 2>/dev/null || true
+            echo "# E2E Test Results" > README.md
+            echo "" >> README.md
+            echo "This branch contains e2e test results published by GitHub Actions." >> README.md
+            echo "" >> README.md
+            echo "## Accessing Results" >> README.md
+            echo "" >> README.md
+            echo "Results are organized by run ID under the \`runs/\` directory." >> README.md
+            echo "" >> README.md
+            echo "Raw content URLs:" >> README.md
+            echo "\`\`\`" >> README.md
+            echo "https://raw.githubusercontent.com/${{ github.repository }}/test-results/runs/<run_id>/test-results/summary.json" >> README.md
+            echo "https://raw.githubusercontent.com/${{ github.repository }}/test-results/runs/<run_id>/test-results/screenshots/<name>.png" >> README.md
+            echo "https://raw.githubusercontent.com/${{ github.repository }}/test-results/runs/<run_id>/test-results/logs/<name>.log" >> README.md
+            echo "\`\`\`" >> README.md
+            git add README.md
+          fi
+
+          # Create directory for this run
+          mkdir -p "$RUN_DIR"
+
+          # Copy test results
+          cp -r /tmp/test-output/* "$RUN_DIR/" 2>/dev/null || true
+
+          # Update latest symlink info
+          echo "${{ github.run_id }}" > latest-run-id.txt
+
+          # Create an index of recent runs
+          cat > "$RUN_DIR/index.json" << EOF
+          {
+            "run_id": "${{ github.run_id }}",
+            "run_number": "${{ github.run_number }}",
+            "sha": "${{ github.sha }}",
+            "ref": "${{ github.ref }}",
+            "event": "${{ github.event_name }}",
+            "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "test_outcome": "${{ steps.e2e-tests.outcome }}",
+            "files": {
+              "summary": "test-results/summary.json",
+              "results_json": "test-results/results.json",
+              "screenshots_dir": "test-results/screenshots/",
+              "logs_dir": "test-results/logs/",
+              "playwright_report": "playwright-report/"
+            },
+            "raw_base_url": "https://raw.githubusercontent.com/${{ github.repository }}/test-results/$RUN_DIR"
+          }
+          EOF
+
+          # List all files for debugging
+          echo "Files in $RUN_DIR:"
+          find "$RUN_DIR" -type f 2>/dev/null || echo "No files found"
+
+          # Add and commit
+          git add -A
+          git commit -m "E2E test results for run #${{ github.run_number }} (${{ github.sha }})" || echo "No changes to commit"
+
+          # Push to test-results branch
+          git push origin test-results --force
+
+      - name: Output results location
+        if: always()
+        run: |
+          echo "## E2E Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Test outcome: **${{ steps.e2e-tests.outcome }}**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Raw Content URLs" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Base URL: \`https://raw.githubusercontent.com/${{ github.repository }}/test-results/runs/${{ github.run_id }}/\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Summary**: https://raw.githubusercontent.com/${{ github.repository }}/test-results/runs/${{ github.run_id }}/test-results/summary.json" >> $GITHUB_STEP_SUMMARY
+          echo "- **Test Results JSON**: https://raw.githubusercontent.com/${{ github.repository }}/test-results/runs/${{ github.run_id }}/test-results/results.json" >> $GITHUB_STEP_SUMMARY
+          echo "- **Run Index**: https://raw.githubusercontent.com/${{ github.repository }}/test-results/runs/${{ github.run_id }}/index.json" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Latest Run" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "https://raw.githubusercontent.com/${{ github.repository }}/test-results/latest-run-id.txt" >> $GITHUB_STEP_SUMMARY
+
+      - name: Fail if tests failed
+        if: steps.e2e-tests.outcome == 'failure'
+        run: exit 1

@@ -67,7 +67,8 @@ self.addEventListener('activate', (event) => {
       );
     })
   );
-  self.clients.claim();
+  // Don't call clients.claim() - let the page control when to use the new SW
+  // This prevents automatic reload on first install
 });
 
 // Listen for skip waiting message from the app
