@@ -66,9 +66,14 @@ export class HeatGameRenderer {
   private buildMenu: HTMLElement | null = null;
 
   constructor(game: HeatGame, canvas: HTMLCanvasElement, config: Partial<RenderConfig> = {}) {
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      throw new Error('Failed to get 2D canvas context');
+    }
+
     this.game = game;
     this.canvas = canvas;
-    this.ctx = canvas.getContext('2d')!;
+    this.ctx = ctx;
     this.config = { ...DEFAULT_RENDER_CONFIG, ...config };
 
     this.setupCanvas();

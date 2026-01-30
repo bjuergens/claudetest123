@@ -79,7 +79,8 @@ if ('serviceWorker' in navigator) {
           updatePWAStatus('Update available');
         }
       })
-      .catch(() => {
+      .catch((error) => {
+        console.warn('Service Worker registration failed:', error);
         updatePWAStatus('Registration failed');
       });
 
@@ -184,52 +185,77 @@ window.addEventListener('load', () => {
 });
 
 function initGame(): void {
-  if (!canvas) return;
+  if (!canvas) {
+    throw new Error('Game canvas element not found');
+  }
 
-  // Create game instance
   const game = new HeatGame(500);
-
-  // Create renderer
   const renderer = new HeatGameRenderer(game, canvas, {
     cellSize: CELL_SIZE,
     gridPadding: GRID_PADDING,
   });
 
-  // Setup UI if container exists
   if (gameUI) {
     renderer.createUI(gameUI);
   }
 
-  // Handle cell clicks
   renderer.onCellClick((x, y, button) => {
     if (button === 0) {
-      // Left click - build selected structure
       const structure = renderer.getSelectedStructure();
       if (game.canBuild(x, y, structure)) {
         game.build(x, y, structure);
       }
     } else if (button === 2) {
-      // Right click - demolish
       game.demolish(x, y);
     }
   });
 
-  // Game loop
   let lastTick = 0;
+  let running = true;
 
   function gameLoop(timestamp: number): void {
-    if (timestamp - lastTick >= TICK_INTERVAL) {
-      game.tick();
-      lastTick = timestamp;
-    }
+    if (!running) return;
 
-    renderer.render();
-    renderer.updateUI();
-    requestAnimationFrame(gameLoop);
+    try {
+      if (timestamp - lastTick >= TICK_INTERVAL) {
+        game.tick();
+        lastTick = timestamp;
+      }
+      renderer.render();
+      renderer.updateUI();
+      requestAnimationFrame(gameLoop);
+    } catch (error) {
+      running = false;
+      handleGameCrash(error, game);
+    }
   }
 
-  // Start the game loop
   requestAnimationFrame(gameLoop);
+}
+
+function handleGameCrash(error: unknown, game: HeatGame): void {
+  const state = {
+    money: game.getMoney(),
+    ticks: game.getTickCount(),
+    meltdowns: game.getMeltdownCount(),
+    totalPower: game.getTotalPowerGenerated(),
+    grid: game.getGridSnapshot(),
+  };
+
+  console.error('Game crashed:', error);
+  console.error('Game state at crash:', JSON.stringify(state, null, 2));
+
+  const banner = document.createElement('div');
+  banner.style.cssText = `
+    position: fixed; top: 0; left: 0; right: 0;
+    background: #d32f2f; color: white; padding: 16px;
+    font-family: monospace; z-index: 10000;
+  `;
+  banner.innerHTML = `
+    <strong>Game crashed!</strong> ${error instanceof Error ? error.message : String(error)}
+    <br><small>Check console for details. Refresh to restart.</small>
+  `;
+  document.body.prepend(banner);
 }
 
 // Start game when DOM is ready

@@ -25,6 +25,20 @@ e2e/                     # Playwright e2e tests
 - **HeatGameRenderer.ts** - Canvas rendering and UI, depends on HeatGame
 - **app.ts** - PWA registration, game loop, event wiring
 
+## Error Handling Philosophy
+
+**Fail fast.** Let errors surface immediately so we can fix them.
+
+- **Don't silently swallow exceptions** - at minimum log a warning, but prefer not catching at all
+- **Methods should check preconditions** and throw if context is invalid
+- **No unnecessary null checks** - if we get null pointer errors, the game crashes and we fix it
+- **Null checks are OK** when methods legitimately return null (e.g., `getCell` for out-of-bounds)
+- **The game loop has a top-level try-catch** that:
+  - Stops the game gracefully
+  - Logs the error and game state to console
+  - Shows a crash banner to the user
+- **It's OK for the game to crash** from unexpected exceptions - we want to know about bugs
+
 ## Development Commands
 
 ```bash
