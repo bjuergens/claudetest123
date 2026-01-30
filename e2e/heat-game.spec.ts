@@ -2,10 +2,10 @@ import { test, expect, Page, ConsoleMessage } from '@playwright/test';
 import * as fs from 'fs';
 import * as path from 'path';
 
-// Game constants (matching the game code)
+// Game constants (matching the app.ts renderer config)
 const GRID_SIZE = 16;
-const CELL_SIZE = 32;
-const GRID_PADDING = 10;
+const CELL_SIZE = 28;  // Must match app.ts cellSize
+const GRID_PADDING = 8; // Must match app.ts gridPadding
 
 /**
  * Calculate canvas click coordinates for a grid cell
@@ -116,7 +116,8 @@ test.describe('Heat Game E2E Tests', () => {
     const canvas = page.locator('#game-canvas');
 
     // Click on the FuelRod button to select it
-    const fuelRodButton = page.locator('.heat-game-build-menu button', { hasText: 'FuelRod' });
+    const fuelRodButton = page.getByRole('button', { name: /FuelRod/i });
+    await expect(fuelRodButton).toBeVisible();
     await fuelRodButton.click();
 
     await page.screenshot({
@@ -145,23 +146,19 @@ test.describe('Heat Game E2E Tests', () => {
     const canvas = page.locator('#game-canvas');
 
     // Place a Fuel Rod at (7, 7)
-    const fuelRodButton = page.locator('.heat-game-build-menu button', { hasText: 'FuelRod' });
-    await fuelRodButton.click();
+    await page.getByRole('button', { name: /FuelRod/i }).click();
     await canvas.click({ position: getCellClickPosition(7, 7) });
 
     // Place a Ventilator next to it at (6, 7) for cooling
-    const ventilatorButton = page.locator('.heat-game-build-menu button', { hasText: 'Ventilator' });
-    await ventilatorButton.click();
+    await page.getByRole('button', { name: /Ventilator/i }).click();
     await canvas.click({ position: getCellClickPosition(6, 7) });
 
     // Place a Turbine at (8, 7) to convert heat to power
-    const turbineButton = page.locator('.heat-game-build-menu button', { hasText: 'Turbine' });
-    await turbineButton.click();
+    await page.getByRole('button', { name: /Turbine/i }).click();
     await canvas.click({ position: getCellClickPosition(8, 7) });
 
     // Place a Substation at (9, 7) to sell power
-    const substationButton = page.locator('.heat-game-build-menu button', { hasText: 'Substation' });
-    await substationButton.click();
+    await page.getByRole('button', { name: /Substation/i }).click();
     await canvas.click({ position: getCellClickPosition(9, 7) });
 
     await page.screenshot({
@@ -186,8 +183,7 @@ test.describe('Heat Game E2E Tests', () => {
     const canvas = page.locator('#game-canvas');
 
     // Place a Ventilator (cheaper to test)
-    const ventilatorButton = page.locator('.heat-game-build-menu button', { hasText: 'Ventilator' });
-    await ventilatorButton.click();
+    await page.getByRole('button', { name: /Ventilator/i }).click();
     await canvas.click({ position: getCellClickPosition(3, 3) });
 
     // Check money after placing ($500 - $50 = $450)
@@ -216,15 +212,14 @@ test.describe('Heat Game E2E Tests', () => {
 
     // Build a small power plant setup
     const structures = [
-      { type: 'Ventilator', x: 5, y: 7 },
-      { type: 'FuelRod', x: 6, y: 7 },
-      { type: 'Turbine', x: 7, y: 7 },
-      { type: 'Substation', x: 8, y: 7 },
+      { type: /Ventilator/i, x: 5, y: 7 },
+      { type: /FuelRod/i, x: 6, y: 7 },
+      { type: /Turbine/i, x: 7, y: 7 },
+      { type: /Substation/i, x: 8, y: 7 },
     ];
 
     for (const s of structures) {
-      const button = page.locator('.heat-game-build-menu button', { hasText: s.type });
-      await button.click();
+      await page.getByRole('button', { name: s.type }).click();
       await canvas.click({ position: getCellClickPosition(s.x, s.y) });
     }
 
@@ -260,8 +255,7 @@ test.describe('Heat Game E2E Tests', () => {
       { x: 8, y: 8 },
     ];
 
-    const fuelRodButton = page.locator('.heat-game-build-menu button', { hasText: 'FuelRod' });
-    await fuelRodButton.click();
+    await page.getByRole('button', { name: /FuelRod/i }).click();
 
     for (const pos of fuelRodPositions) {
       await canvas.click({ position: getCellClickPosition(pos.x, pos.y) });
@@ -292,8 +286,7 @@ test.describe('Heat Game E2E Tests', () => {
     const canvas = page.locator('#game-canvas');
 
     // Substation costs $250, starting with $500
-    const substationButton = page.locator('.heat-game-build-menu button', { hasText: 'Substation' });
-    await substationButton.click();
+    await page.getByRole('button', { name: /Substation/i }).click();
 
     // Build 2 substations ($500 total)
     await canvas.click({ position: getCellClickPosition(1, 1) });
@@ -324,8 +317,7 @@ test.describe('Heat Game E2E Tests', () => {
     const canvas = page.locator('#game-canvas');
 
     // Select a cheaper structure
-    const insulationButton = page.locator('.heat-game-build-menu button', { hasText: 'InsulationPlate' });
-    await insulationButton.click();
+    await page.getByRole('button', { name: /InsulationPlate/i }).click();
 
     // Rapidly click multiple cells (limited to fit budget)
     const clicks = [];
