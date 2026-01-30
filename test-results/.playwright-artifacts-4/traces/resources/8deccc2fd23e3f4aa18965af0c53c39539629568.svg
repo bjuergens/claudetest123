@@ -1,0 +1,5 @@
+<svg width="192" height="192" xmlns="http://www.w3.org/2000/svg">
+  <rect width="192" height="192" fill="#667eea" rx="32"/>
+  <circle cx="96" cy="96" r="60" fill="#764ba2" opacity="0.8"/>
+  <text x="96" y="120" font-size="80" text-anchor="middle" fill="white" font-family="Arial, sans-serif">🎮</text>
+</svg>
