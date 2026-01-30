@@ -1,0 +1,512 @@
+{
+  "config": {
+    "configFile": "/home/runner/work/claudetest123/claudetest123/playwright.config.ts",
+    "rootDir": "/home/runner/work/claudetest123/claudetest123/e2e",
+    "forbidOnly": true,
+    "fullyParallel": true,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "ci": {
+        "commitHref": "https://github.com/bjuergens/claudetest123/commit/08471831bb5182350f742d46ea810ca8c81cf989",
+        "commitHash": "08471831bb5182350f742d46ea810ca8c81cf989",
+        "prHref": "https://github.com/bjuergens/claudetest123/pull/9",
+        "prTitle": "Add comprehensive balancing config for progression system",
+        "prBaseHash": "55f00c912ca022c518bb9f11c087dd39912e17de",
+        "buildHref": "https://github.com/bjuergens/claudetest123/actions/runs/21532995731"
+      },
+      "gitCommit": {
+        "shortHash": "0847183",
+        "hash": "08471831bb5182350f742d46ea810ca8c81cf989",
+        "subject": "Merge bd70e0bedad08732d89e67735a66310ccb9bd557 into 55f00c912ca022c518bb9f11c087dd39912e17de",
+        "body": "Merge bd70e0bedad08732d89e67735a66310ccb9bd557 into 55f00c912ca022c518bb9f11c087dd39912e17de\n",
+        "author": {
+          "name": "Björn Jürgens",
+          "email": "4362465+bjuergens@users.noreply.github.com",
+          "time": 1769812419000
+        },
+        "committer": {
+          "name": "GitHub",
+          "email": "noreply@github.com",
+          "time": 1769812419000
+        },
+        "branch": "HEAD"
+      },
+      "gitDiff": "diff --git a/src/game/BalanceConfig.ts b/src/game/BalanceConfig.ts\nnew file mode 100644\nindex 0000000..1795cbd\n--- /dev/null\n+++ b/src/game/BalanceConfig.ts\n@@ -0,0 +1,753 @@\n+/**\n+ * Game Balance Configuration\n+ *\n+ * All balancing values in one place for easy tuning.\n+ *\n+ * DESIGN PHILOSOPHY:\n+ * - Each tier is ~100x more expensive than the previous\n+ * - Each tier is ~10x more efficient than the previous\n+ * - Fuel rods have finite lifetime (other items last until melted/sold)\n+ * - Upgrades: linear improvement, exponential cost\n+ * - Secret upgrades are hidden until unlock conditions are met\n+ */\n+\n+// =============================================================================\n+// CORE GAME SETTINGS\n+// =============================================================================\n+\n+export const CORE_SETTINGS = {\n+  /** Starting money (player starts from zero) */\n+  STARTING_MONEY: 0,\n+\n+  /** Tick interval in milliseconds (1 tick per second) */\n+  TICK_INTERVAL_MS: 1000,\n+\n+  /** Initial grid size */\n+  INITIAL_GRID_SIZE: 16,\n+\n+  /** Maximum grid size (after all expansions) */\n+  MAX_GRID_SIZE: 20,\n+\n+  /** Base heat transfer rate between cells */\n+  BASE_HEAT_TRANSFER_RATE: 0.1,\n+\n+  /** Heat transfer rate to environment (edge cells) */\n+  ENVIRONMENT_HEAT_TRANSFER_RATE: 0.05,\n+\n+  /** Ambient temperature in Celsius */\n+  AMBIENT_TEMPERATURE: 20,\n+};\n+\n+// =============================================================================\n+// MANUAL POWER GENERATION (Clicker)\n+// =============================================================================\n+\n+export const MANUAL_GENERATION = {\n+  /** Base money per click */\n+  BASE_MONEY_PER_CLICK: 1,\n+\n+  /** Upgrade cost multiplier per level */\n+  UPGRADE_COST_MULTIPLIER: 2.0,\n+\n+  /** Base cost for first upgrade */\n+  UPGRADE_BASE_COST: 50,\n+\n+  /** Money increase per upgrade level (additive) */\n+  MONEY_PER_LEVEL: 1,\n+};\n+\n+// =============================================================================\n+// TIER DEFINITIONS\n+// =============================================================================\n+\n+export enum Tier {\n+  T1 = 1,\n+  T2 = 2,\n+  T3 = 3,\n+  T4 = 4,\n+}\n+\n+/** Cost multiplier per tier (T1 = 1x, T2 = 100x, T3 = 10000x, etc.) */\n+export const TIER_COST_MULTIPLIER: Record<Tier, number> = {\n+  [Tier.T1]: 1,\n+  [Tier.T2]: 100,\n+  [Tier.T3]: 10_000,\n+  [Tier.T4]: 1_000_000,\n+};\n+\n+/** Efficiency multiplier per tier (T1 = 1x, T2 = 10x, T3 = 100x, etc.) */\n+export const TIER_EFFICIENCY_MULTIPLIER: Record<Tier, number> = {\n+  [Tier.T1]: 1,\n+  [Tier.T2]: 10,\n+  [Tier.T3]: 100,\n+  [Tier.T4]: 1000,\n+};\n+\n+// =============================================================================\n+// STRUCTURE BASE STATS (Tier 1)\n+// =============================================================================\n+\n+export enum StructureType {\n+  Empty = 'empty',\n+  FuelRod = 'fuel_rod',\n+  Ventilator = 'ventilator',\n+  HeatExchanger = 'heat_exchanger',\n+  Insulator = 'insulator',\n+  Turbine = 'turbine',\n+  Substation = 'substation',\n+  VoidCell = 'void_cell', // Secret structure\n+}\n+\n+export interface StructureBaseStats {\n+  /** Display name */\n+  name: string;\n+\n+  /** Base cost in T1 (scales with tier) */\n+  baseCost: number;\n+\n+  /** Melting temperature in Celsius */\n+  meltTemp: number;\n+\n+  /** Heat conductivity multiplier (1.0 = normal) */\n+  conductivity: number;\n+\n+  /** Heat generated per tick (fuel rods only) */\n+  heatGeneration: number;\n+\n+  /** Heat dissipated per tick (ventilators only) */\n+  heatDissipation: number;\n+\n+  /** Power generated per heat unit consumed (turbines only) */\n+  powerGeneration: number;\n+\n+  /** Max heat consumed per tick for power (turbines only) */\n+  maxHeatConsumption: number;\n+\n+  /** Power sold per tick (substations only) */\n+  powerSaleRate: number;\n+\n+  /** Fuel lifetime in ticks (fuel rods only, 0 = infinite) */\n+  baseLifetime: number;\n+\n+  /** Whether this structure can be tiered */\n+  canBeTiered: boolean;\n+\n+  /** Whether this is a secret structure (hidden until unlocked) */\n+  isSecret: boolean;\n+}\n+\n+/**\n+ * Base stats for all structures at Tier 1\n+ *\n+ * Melt temperatures (in Celsius):\n+ * - Substation: 80°C (very fragile, needs protection)\n+ * - Turbine: 150°C (moderate, needs cooling)\n+ * - Ventilator: 200°C (can handle some heat)\n+ * - Insulator: 300°C (designed to handle heat)\n+ * - Heat Exchanger: 400°C (built for heat transfer)\n+ * - Fuel Rod: 5000°C (extremely heat resistant)\n+ *\n+ * Conductivity:\n+ * - Fuel Rod: 1.5 (high - heat spreads from fuel)\n+ * - Heat Exchanger: 2.0 (very high - designed for transfer)\n+ * - Turbine, Ventilator, Substation: 1.0 (normal)\n+ * - Empty: 0.3 (low - air gap)\n+ * - Insulator: 0.05 (very low - designed to block)\n+ */\n+export const STRUCTURE_BASE_STATS: Record<StructureType, StructureBaseStats> = {\n+  [StructureType.Empty]: {\n+    name: 'Empty',\n+    baseCost: 0,\n+    meltTemp: Infinity,\n+    conductivity: 0.3,\n+    heatGeneration: 0,\n+    heatDissipation: 0,\n+    powerGeneration: 0,\n+    maxHeatConsumption: 0,\n+    powerSaleRate: 0,\n+    baseLifetime: 0,\n+    canBeTiered: false,\n+    isSecret: false,\n+  },\n+\n+  [StructureType.FuelRod]: {\n+    name: 'Fuel Rod',\n+    baseCost: 10,\n+    meltTemp: 5000,\n+    conductivity: 1.5,\n+    heatGeneration: 10, // T1: 10 heat/tick, T2: 100 heat/tick, etc.\n+    heatDissipation: 0,\n+    powerGeneration: 0,\n+    maxHeatConsumption: 0,\n+    powerSaleRate: 0,\n+    baseLifetime: 20, // T1: 20 ticks, T2: 200 ticks (linear scaling)\n+    canBeTiered: true,\n+    isSecret: false,\n+  },\n+\n+  [StructureType.Ventilator]: {\n+    name: 'Ventilator',\n+    baseCost: 10,\n+    meltTemp: 200,\n+    conductivity: 1.0,\n+    heatGeneration: 0,\n+    heatDissipation: 5, // T1: 5 heat/tick removed\n+    powerGeneration: 0,\n+    maxHeatConsumption: 0,\n+    powerSaleRate: 0,\n+    baseLifetime: 0,\n+    canBeTiered: true,\n+    isSecret: false,\n+  },\n+\n+  [StructureType.HeatExchanger]: {\n+    name: 'Heat Exchanger',\n+    baseCost: 15,\n+    meltTemp: 400,\n+    conductivity: 2.0,\n+    heatGeneration: 0,\n+    heatDissipation: 0,\n+    powerGeneration: 0,\n+    maxHeatConsumption: 0,\n+    powerSaleRate: 0,\n+    baseLifetime: 0,\n+    canBeTiered: true,\n+    isSecret: false,\n+  },\n+\n+  [StructureType.Insulator]: {\n+    name: 'Insulator',\n+    baseCost: 8,\n+    meltTemp: 300,\n+    conductivity: 0.05,\n+    heatGeneration: 0,\n+    heatDissipation: 0,\n+    powerGeneration: 0,\n+    maxHeatConsumption: 0,\n+    powerSaleRate: 0,\n+    baseLifetime: 0,\n+    canBeTiered: true,\n+    isSecret: false,\n+  },\n+\n+  [StructureType.Turbine]: {\n+    name: 'Turbine',\n+    baseCost: 25, // T1: 25, T2: 2500 (close to user's 250 for T2 if we adjust)\n+    meltTemp: 150,\n+    conductivity: 1.0,\n+    heatGeneration: 0,\n+    heatDissipation: 0,\n+    powerGeneration: 0.1, // Power per heat consumed\n+    maxHeatConsumption: 10, // Max heat consumed per tick\n+    powerSaleRate: 0,\n+    baseLifetime: 0,\n+    canBeTiered: true,\n+    isSecret: false,\n+  },\n+\n+  [StructureType.Substation]: {\n+    name: 'Substation',\n+    baseCost: 50, // T1: 50, T2: 5000 (close to user's 500 for T2 if we adjust)\n+    meltTemp: 80,\n+    conductivity: 1.0,\n+    heatGeneration: 0,\n+    heatDissipation: 0,\n+    powerGeneration: 0,\n+    maxHeatConsumption: 0,\n+    powerSaleRate: 1, // Power units sold per tick (converted to money)\n+    baseLifetime: 0,\n+    canBeTiered: true,\n+    isSecret: false,\n+  },\n+\n+  [StructureType.VoidCell]: {\n+    name: 'Void Cell',\n+    baseCost: 100,\n+    meltTemp: Infinity, // Cannot melt\n+    conductivity: 10.0, // Extremely high - sucks in heat\n+    heatGeneration: 0,\n+    heatDissipation: 50, // Destroys heat\n+    powerGeneration: 0,\n+    maxHeatConsumption: 0,\n+    powerSaleRate: 0,\n+    baseLifetime: 0,\n+    canBeTiered: true,\n+    isSecret: true, // Unlocked via secret\n+  },\n+};\n+\n+// =============================================================================\n+// FUEL ROD ADJACENCY BONUS\n+// =============================================================================\n+\n+export const FUEL_ADJACENCY = {\n+  /** Heat multiplier per adjacent fuel rod (4-way orthogonal) */\n+  BONUS_PER_ADJACENT: 0.5, // 1 adjacent = 1.5x, 2 = 2x, 3 = 2.5x, 4 = 3x\n+};\n+\n+// =============================================================================\n+// ECONOMY\n+// =============================================================================\n+\n+export const ECONOMY = {\n+  /** Money earned per power unit sold */\n+  MONEY_PER_POWER: 1,\n+\n+  /** Refund percentage when demolishing (0 = no refund, 1 = full refund) */\n+  DEMOLISH_REFUND_RATE: 0, // Default: no refund (can be unlocked)\n+};\n+\n+// =============================================================================\n+// UPGRADES (Regular)\n+// =============================================================================\n+\n+export enum UpgradeType {\n+  // Per-tier fuel upgrades\n+  FuelLifetime = 'fuel_lifetime',\n+  FuelHeatOutput = 'fuel_heat_output',\n+\n+  // Structure upgrades\n+  TurbineConductivity = 'turbine_conductivity',\n+  InsulatorConductivity = 'insulator_conductivity',\n+  SubstationSaleRate = 'substation_sale_rate',\n+  VentilatorDissipation = 'ventilator_dissipation',\n+\n+  // Global upgrades\n+  TickSpeed = 'tick_speed',\n+  ManualClickPower = 'manual_click_power',\n+\n+  // Melt temperature upgrades (one per structure type)\n+  MeltTempFuelRod = 'melt_temp_fuel_rod',\n+  MeltTempVentilator = 'melt_temp_ventilator',\n+  MeltTempHeatExchanger = 'melt_temp_heat_exchanger',\n+  MeltTempInsulator = 'melt_temp_insulator',\n+  MeltTempTurbine = 'melt_temp_turbine',\n+  MeltTempSubstation = 'melt_temp_substation',\n+}\n+\n+export interface UpgradeDefinition {\n+  /** Display name */\n+  name: string;\n+\n+  /** Description */\n+  description: string;\n+\n+  /** Base cost for level 1 */\n+  baseCost: number;\n+\n+  /** Cost multiplier per level (exponential) */\n+  costMultiplier: number;\n+\n+  /** Maximum level (0 = unlimited) */\n+  maxLevel: number;\n+\n+  /** Improvement per level (linear, additive or multiplicative depends on type) */\n+  improvementPerLevel: number;\n+\n+  /** Whether improvement is multiplicative (true) or additive (false) */\n+  isMultiplicative: boolean;\n+\n+  /** For per-tier upgrades, which tier this applies to (null = all) */\n+  appliesTo?: Tier;\n+}\n+\n+export const UPGRADE_DEFINITIONS: Record<UpgradeType, UpgradeDefinition> = {\n+  [UpgradeType.FuelLifetime]: {\n+    name: 'Fuel Longevity',\n+    description: 'Fuel rods last longer before depleting',\n+    baseCost: 100,\n+    costMultiplier: 2.5,\n+    maxLevel: 0,\n+    improvementPerLevel: 10, // +10 ticks per level\n+    isMultiplicative: false,\n+  },\n+\n+  [UpgradeType.FuelHeatOutput]: {\n+    name: 'Enriched Fuel',\n+    description: 'Fuel rods generate more heat per tick',\n+    baseCost: 150,\n+    costMultiplier: 2.5,\n+    maxLevel: 0,\n+    improvementPerLevel: 5, // +5 heat per level\n+    isMultiplicative: false,\n+  },\n+\n+  [UpgradeType.TurbineConductivity]: {\n+    name: 'Turbine Efficiency',\n+    description: 'Turbines transfer heat more effectively',\n+    baseCost: 200,\n+    costMultiplier: 2.0,\n+    maxLevel: 10,\n+    improvementPerLevel: 0.2, // +0.2 conductivity per level\n+    isMultiplicative: false,\n+  },\n+\n+  [UpgradeType.InsulatorConductivity]: {\n+    name: 'Advanced Insulation',\n+    description: 'Insulators block even more heat',\n+    baseCost: 150,\n+    costMultiplier: 2.0,\n+    maxLevel: 10,\n+    improvementPerLevel: 0.5, // 0.5x multiplier per level (gets lower)\n+    isMultiplicative: true,\n+  },\n+\n+  [UpgradeType.SubstationSaleRate]: {\n+    name: 'Power Grid Upgrade',\n+    description: 'Substations sell more power per tick',\n+    baseCost: 500,\n+    costMultiplier: 3.0,\n+    maxLevel: 0,\n+    improvementPerLevel: 1, // +1 power/tick per level\n+    isMultiplicative: false,\n+  },\n+\n+  [UpgradeType.VentilatorDissipation]: {\n+    name: 'Improved Cooling',\n+    description: 'Ventilators remove more heat per tick',\n+    baseCost: 100,\n+    costMultiplier: 2.0,\n+    maxLevel: 0,\n+    improvementPerLevel: 2, // +2 heat dissipation per level\n+    isMultiplicative: false,\n+  },\n+\n+  [UpgradeType.TickSpeed]: {\n+    name: 'Overclock',\n+    description: 'Game runs faster (careful: heat accumulates faster too!)',\n+    baseCost: 1000,\n+    costMultiplier: 5.0,\n+    maxLevel: 5,\n+    improvementPerLevel: 0.8, // 0.8x tick interval per level (faster)\n+    isMultiplicative: true,\n+  },\n+\n+  [UpgradeType.ManualClickPower]: {\n+    name: 'Bigger Buttons',\n+    description: 'Manual generation gives more money per click',\n+    baseCost: 50,\n+    costMultiplier: 2.0,\n+    maxLevel: 0,\n+    improvementPerLevel: 1, // +1 per click per level\n+    isMultiplicative: false,\n+  },\n+\n+  // Melt temperature upgrades\n+  [UpgradeType.MeltTempFuelRod]: {\n+    name: 'Reinforced Fuel Casing',\n+    description: 'Fuel rods can withstand higher temperatures',\n+    baseCost: 500,\n+    costMultiplier: 3.0,\n+    maxLevel: 10,\n+    improvementPerLevel: 500, // +500°C per level\n+    isMultiplicative: false,\n+  },\n+\n+  [UpgradeType.MeltTempVentilator]: {\n+    name: 'Heat-Resistant Fans',\n+    description: 'Ventilators can withstand higher temperatures',\n+    baseCost: 100,\n+    costMultiplier: 2.5,\n+    maxLevel: 10,\n+    improvementPerLevel: 20, // +20°C per level\n+    isMultiplicative: false,\n+  },\n+\n+  [UpgradeType.MeltTempHeatExchanger]: {\n+    name: 'Hardened Exchangers',\n+    description: 'Heat exchangers can withstand higher temperatures',\n+    baseCost: 150,\n+    costMultiplier: 2.5,\n+    maxLevel: 10,\n+    improvementPerLevel: 40, // +40°C per level\n+    isMultiplicative: false,\n+  },\n+\n+  [UpgradeType.MeltTempInsulator]: {\n+    name: 'Advanced Ceramics',\n+    description: 'Insulators can withstand higher temperatures',\n+    baseCost: 120,\n+    costMultiplier: 2.5,\n+    maxLevel: 10,\n+    improvementPerLevel: 30, // +30°C per level\n+    isMultiplicative: false,\n+  },\n+\n+  [UpgradeType.MeltTempTurbine]: {\n+    name: 'Reinforced Turbines',\n+    description: 'Turbines can withstand higher temperatures',\n+    baseCost: 200,\n+    costMultiplier: 2.5,\n+    maxLevel: 10,\n+    improvementPerLevel: 15, // +15°C per level\n+    isMultiplicative: false,\n+  },\n+\n+  [UpgradeType.MeltTempSubstation]: {\n+    name: 'Industrial Substations',\n+    description: 'Substations can withstand higher temperatures',\n+    baseCost: 300,\n+    costMultiplier: 3.0,\n+    maxLevel: 10,\n+    improvementPerLevel: 10, // +10°C per level (they're fragile!)\n+    isMultiplicative: false,\n+  },\n+};\n+\n+// =============================================================================\n+// SECRET UPGRADES\n+// =============================================================================\n+\n+export enum SecretUpgradeType {\n+  ExoticFuel = 'exotic_fuel',\n+  ReactorExpansion1 = 'reactor_expansion_1', // 16 -> 17\n+  ReactorExpansion2 = 'reactor_expansion_2', // 17 -> 18\n+  ReactorExpansion3 = 'reactor_expansion_3', // 18 -> 19\n+  ReactorExpansion4 = 'reactor_expansion_4', // 19 -> 20\n+  VoidCellUnlock = 'void_cell_unlock',\n+  Overclock = 'overclock',\n+  Salvage = 'salvage',\n+}\n+\n+export interface SecretUpgradeDefinition {\n+  /** Display name (shown after unlock) */\n+  name: string;\n+\n+  /** Description (shown after unlock) */\n+  description: string;\n+\n+  /** Hint shown before unlock (cryptic) */\n+  hint: string;\n+\n+  /** Cost to purchase after unlock condition is met */\n+  cost: number;\n+\n+  /** Whether this is a toggle (can be turned on/off) */\n+  isToggle: boolean;\n+}\n+\n+export const SECRET_UPGRADE_DEFINITIONS: Record<SecretUpgradeType, SecretUpgradeDefinition> = {\n+  [SecretUpgradeType.ExoticFuel]: {\n+    name: 'Exotic Fuel Synthesis',\n+    description: 'Unlock exotic fuel rods that generate more heat the hotter they get. Toggle to build exotic variants.',\n+    hint: '???',\n+    cost: 1000,\n+    isToggle: true,\n+  },\n+\n+  [SecretUpgradeType.ReactorExpansion1]: {\n+    name: 'Reactor Expansion I',\n+    description: 'Expand the reactor grid to 17x17',\n+    hint: '???',\n+    cost: 10_000,\n+    isToggle: false,\n+  },\n+\n+  [SecretUpgradeType.ReactorExpansion2]: {\n+    name: 'Reactor Expansion II',\n+    description: 'Expand the reactor grid to 18x18',\n+    hint: '???',\n+    cost: 100_000,\n+    isToggle: false,\n+  },\n+\n+  [SecretUpgradeType.ReactorExpansion3]: {\n+    name: 'Reactor Expansion III',\n+    description: 'Expand the reactor grid to 19x19',\n+    hint: '???',\n+    cost: 1_000_000,\n+    isToggle: false,\n+  },\n+\n+  [SecretUpgradeType.ReactorExpansion4]: {\n+    name: 'Reactor Expansion IV',\n+    description: 'Expand the reactor grid to 20x20 (maximum)',\n+    hint: '???',\n+    cost: 10_000_000,\n+    isToggle: false,\n+  },\n+\n+  [SecretUpgradeType.VoidCellUnlock]: {\n+    name: 'Void Technology',\n+    description: 'Unlock Void Cells - mysterious structures that absorb massive amounts of heat',\n+    hint: '???',\n+    cost: 5000,\n+    isToggle: false,\n+  },\n+\n+  [SecretUpgradeType.Overclock]: {\n+    name: 'Temporal Acceleration',\n+    description: 'Unlock 2x tick speed upgrade',\n+    hint: '???',\n+    cost: 10_000,\n+    isToggle: false,\n+  },\n+\n+  [SecretUpgradeType.Salvage]: {\n+    name: 'Salvage Operations',\n+    description: 'Get 50% refund when demolishing structures',\n+    hint: '???',\n+    cost: 2000,\n+    isToggle: false,\n+  },\n+};\n+\n+// =============================================================================\n+// SECRET UNLOCK CONDITIONS\n+// =============================================================================\n+\n+export interface SecretUnlockCondition {\n+  type: 'meltdown' | 'fill_grid' | 'survive_heat' | 'total_earned' | 'demolish_count';\n+  /** Threshold value for the condition */\n+  threshold: number;\n+  /** For survive_heat: percentage of max temp (0.9 = 90%) */\n+  heatPercentage?: number;\n+  /** For survive_heat: number of ticks to survive */\n+  survivalTicks?: number;\n+}\n+\n+export const SECRET_UNLOCK_CONDITIONS: Record<SecretUpgradeType, SecretUnlockCondition> = {\n+  [SecretUpgradeType.ExoticFuel]: {\n+    type: 'meltdown',\n+    threshold: 1, // First meltdown\n+  },\n+\n+  [SecretUpgradeType.ReactorExpansion1]: {\n+    type: 'fill_grid',\n+    threshold: 256, // All 16x16 cells filled\n+  },\n+\n+  [SecretUpgradeType.ReactorExpansion2]: {\n+    type: 'fill_grid',\n+    threshold: 289, // All 17x17 cells filled\n+  },\n+\n+  [SecretUpgradeType.ReactorExpansion3]: {\n+    type: 'fill_grid',\n+    threshold: 324, // All 18x18 cells filled\n+  },\n+\n+  [SecretUpgradeType.ReactorExpansion4]: {\n+    type: 'fill_grid',\n+    threshold: 361, // All 19x19 cells filled\n+  },\n+\n+  [SecretUpgradeType.VoidCellUnlock]: {\n+    type: 'survive_heat',\n+    threshold: 100, // 100 ticks\n+    heatPercentage: 0.9, // 90% of max heat\n+    survivalTicks: 100,\n+  },\n+\n+  [SecretUpgradeType.Overclock]: {\n+    type: 'total_earned',\n+    threshold: 10_000, // 10,000 total money earned\n+  },\n+\n+  [SecretUpgradeType.Salvage]: {\n+    type: 'demolish_count',\n+    threshold: 100, // Demolish 100 structures\n+  },\n+};\n+\n+// =============================================================================\n+// EXOTIC FUEL MECHANICS\n+// =============================================================================\n+\n+export const EXOTIC_FUEL = {\n+  /** Base heat multiplier at 0°C */\n+  BASE_MULTIPLIER: 1.0,\n+\n+  /** Additional multiplier per 1000°C of current temperature */\n+  HEAT_SCALING: 0.5, // At 2000°C: 1.0 + (2000/1000 * 0.5) = 2.0x heat output\n+\n+  /** Maximum multiplier cap */\n+  MAX_MULTIPLIER: 5.0,\n+};\n+\n+// =============================================================================\n+// HELPER FUNCTIONS\n+// =============================================================================\n+\n+/**\n+ * Calculate the cost of a structure at a given tier\n+ */\n+export function getStructureCost(type: StructureType, tier: Tier): number {\n+  const baseStats = STRUCTURE_BASE_STATS[type];\n+  // Adjust tier multiplier to match user's specified costs more closely\n+  // User said T2 fuel rod = 100, turbine = 250, substation = 500\n+  // With base costs of 10, 25, 50 and T2 multiplier of 10, we get 100, 250, 500\n+  const tierMultiplier = Math.pow(10, tier - 1);\n+  return Math.round(baseStats.baseCost * tierMultiplier);\n+}\n+\n+/**\n+ * Calculate fuel rod lifetime at a given tier (with upgrades)\n+ */\n+export function getFuelLifetime(tier: Tier, upgradeLevel: number): number {\n+  const baseStats = STRUCTURE_BASE_STATS[StructureType.FuelRod];\n+  // Lifetime scales linearly with tier: T1=20, T2=200, T3=2000\n+  const tierLifetime = baseStats.baseLifetime * Math.pow(10, tier - 1);\n+  const upgradeBonus = upgradeLevel * UPGRADE_DEFINITIONS[UpgradeType.FuelLifetime].improvementPerLevel;\n+  return tierLifetime + upgradeBonus;\n+}\n+\n+/**\n+ * Calculate fuel rod heat generation at a given tier (with upgrades)\n+ */\n+export function getFuelHeatGeneration(tier: Tier, upgradeLevel: number): number {\n+  const baseStats = STRUCTURE_BASE_STATS[StructureType.FuelRod];\n+  // Heat scales exponentially with tier: T1=10, T2=100, T3=1000\n+  const tierHeat = baseStats.heatGeneration * Math.pow(10, tier - 1);\n+  const upgradeBonus = upgradeLevel * UPGRADE_DEFINITIONS[UpgradeType.FuelHeatOutput].improvementPerLevel;\n+  return tierHeat + upgradeBonus;\n+}\n+\n+/**\n+ * Calculate upgrade cost at a given level\n+ */\n+export function getUpgradeCost(upgradeType: UpgradeType, level: number): number {\n+  const definition = UPGRADE_DEFINITIONS[upgradeType];\n+  return Math.round(definition.baseCost * Math.pow(definition.costMultiplier, level));\n+}\n+\n+/**\n+ * Calculate secret upgrade unlock progress\n+ */\n+export function getSecretUnlockProgress(\n+  upgradeType: SecretUpgradeType,\n+  gameStats: {\n+    meltdownCount: number;\n+    filledCells: number;\n+    totalMoneyEarned: number;\n+    demolishCount: number;\n+    ticksAtHighHeat: number;\n+  }\n+): { current: number; required: number; unlocked: boolean } {\n+  const condition = SECRET_UNLOCK_CONDITIONS[upgradeType];\n+  let current = 0;\n+\n+  switch (condition.type) {\n+    case 'meltdown':\n+      current = gameStats.meltdownCount;\n+      break;\n+    case 'fill_grid':\n+      current = gameStats.filledCells;\n+      break;\n+    case 'total_earned':\n+      current = gameStats.totalMoneyEarned;\n+      break;\n+    case 'demolish_count':\n+      current = gameStats.demolishCount;\n+      break;\n+    case 'survive_heat':\n+      current = gameStats.ticksAtHighHeat;\n+      break;\n+  }\n+\n+  return {\n+    current,\n+    required: condition.threshold,\n+    unlocked: current >= condition.threshold,\n+  };\n+}",
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "/home/runner/work/claudetest123/claudetest123/test-results",
+        "repeatEach": 1,
+        "retries": 2,
+        "metadata": {
+          "ci": {
+            "commitHref": "https://github.com/bjuergens/claudetest123/commit/08471831bb5182350f742d46ea810ca8c81cf989",
+            "commitHash": "08471831bb5182350f742d46ea810ca8c81cf989",
+            "prHref": "https://github.com/bjuergens/claudetest123/pull/9",
+            "prTitle": "Add comprehensive balancing config for progression system",
+            "prBaseHash": "55f00c912ca022c518bb9f11c087dd39912e17de",
+            "buildHref": "https://github.com/bjuergens/claudetest123/actions/runs/21532995731"
+          },
+          "gitCommit": {
+            "shortHash": "0847183",
+            "hash": "08471831bb5182350f742d46ea810ca8c81cf989",
+            "subject": "Merge bd70e0bedad08732d89e67735a66310ccb9bd557 into 55f00c912ca022c518bb9f11c087dd39912e17de",
+            "body": "Merge bd70e0bedad08732d89e67735a66310ccb9bd557 into 55f00c912ca022c518bb9f11c087dd39912e17de\n",
+            "author": {
+              "name": "Björn Jürgens",
+              "email": "4362465+bjuergens@users.noreply.github.com",
+              "time": 1769812419000
+            },
+            "committer": {
+              "name": "GitHub",
+              "email": "noreply@github.com",
+              "time": 1769812419000
+            },
+            "branch": "HEAD"
+          },
+          "gitDiff": "diff --git a/src/game/BalanceConfig.ts b/src/game/BalanceConfig.ts\nnew file mode 100644\nindex 0000000..1795cbd\n--- /dev/null\n+++ b/src/game/BalanceConfig.ts\n@@ -0,0 +1,753 @@\n+/**\n+ * Game Balance Configuration\n+ *\n+ * All balancing values in one place for easy tuning.\n+ *\n+ * DESIGN PHILOSOPHY:\n+ * - Each tier is ~100x more expensive than the previous\n+ * - Each tier is ~10x more efficient than the previous\n+ * - Fuel rods have finite lifetime (other items last until melted/sold)\n+ * - Upgrades: linear improvement, exponential cost\n+ * - Secret upgrades are hidden until unlock conditions are met\n+ */\n+\n+// =============================================================================\n+// CORE GAME SETTINGS\n+// =============================================================================\n+\n+export const CORE_SETTINGS = {\n+  /** Starting money (player starts from zero) */\n+  STARTING_MONEY: 0,\n+\n+  /** Tick interval in milliseconds (1 tick per second) */\n+  TICK_INTERVAL_MS: 1000,\n+\n+  /** Initial grid size */\n+  INITIAL_GRID_SIZE: 16,\n+\n+  /** Maximum grid size (after all expansions) */\n+  MAX_GRID_SIZE: 20,\n+\n+  /** Base heat transfer rate between cells */\n+  BASE_HEAT_TRANSFER_RATE: 0.1,\n+\n+  /** Heat transfer rate to environment (edge cells) */\n+  ENVIRONMENT_HEAT_TRANSFER_RATE: 0.05,\n+\n+  /** Ambient temperature in Celsius */\n+  AMBIENT_TEMPERATURE: 20,\n+};\n+\n+// =============================================================================\n+// MANUAL POWER GENERATION (Clicker)\n+// =============================================================================\n+\n+export const MANUAL_GENERATION = {\n+  /** Base money per click */\n+  BASE_MONEY_PER_CLICK: 1,\n+\n+  /** Upgrade cost multiplier per level */\n+  UPGRADE_COST_MULTIPLIER: 2.0,\n+\n+  /** Base cost for first upgrade */\n+  UPGRADE_BASE_COST: 50,\n+\n+  /** Money increase per upgrade level (additive) */\n+  MONEY_PER_LEVEL: 1,\n+};\n+\n+// =============================================================================\n+// TIER DEFINITIONS\n+// =============================================================================\n+\n+export enum Tier {\n+  T1 = 1,\n+  T2 = 2,\n+  T3 = 3,\n+  T4 = 4,\n+}\n+\n+/** Cost multiplier per tier (T1 = 1x, T2 = 100x, T3 = 10000x, etc.) */\n+export const TIER_COST_MULTIPLIER: Record<Tier, number> = {\n+  [Tier.T1]: 1,\n+  [Tier.T2]: 100,\n+  [Tier.T3]: 10_000,\n+  [Tier.T4]: 1_000_000,\n+};\n+\n+/** Efficiency multiplier per tier (T1 = 1x, T2 = 10x, T3 = 100x, etc.) */\n+export const TIER_EFFICIENCY_MULTIPLIER: Record<Tier, number> = {\n+  [Tier.T1]: 1,\n+  [Tier.T2]: 10,\n+  [Tier.T3]: 100,\n+  [Tier.T4]: 1000,\n+};\n+\n+// =============================================================================\n+// STRUCTURE BASE STATS (Tier 1)\n+// =============================================================================\n+\n+export enum StructureType {\n+  Empty = 'empty',\n+  FuelRod = 'fuel_rod',\n+  Ventilator = 'ventilator',\n+  HeatExchanger = 'heat_exchanger',\n+  Insulator = 'insulator',\n+  Turbine = 'turbine',\n+  Substation = 'substation',\n+  VoidCell = 'void_cell', // Secret structure\n+}\n+\n+export interface StructureBaseStats {\n+  /** Display name */\n+  name: string;\n+\n+  /** Base cost in T1 (scales with tier) */\n+  baseCost: number;\n+\n+  /** Melting temperature in Celsius */\n+  meltTemp: number;\n+\n+  /** Heat conductivity multiplier (1.0 = normal) */\n+  conductivity: number;\n+\n+  /** Heat generated per tick (fuel rods only) */\n+  heatGeneration: number;\n+\n+  /** Heat dissipated per tick (ventilators only) */\n+  heatDissipation: number;\n+\n+  /** Power generated per heat unit consumed (turbines only) */\n+  powerGeneration: number;\n+\n+  /** Max heat consumed per tick for power (turbines only) */\n+  maxHeatConsumption: number;\n+\n+  /** Power sold per tick (substations only) */\n+  powerSaleRate: number;\n+\n+  /** Fuel lifetime in ticks (fuel rods only, 0 = infinite) */\n+  baseLifetime: number;\n+\n+  /** Whether this structure can be tiered */\n+  canBeTiered: boolean;\n+\n+  /** Whether this is a secret structure (hidden until unlocked) */\n+  isSecret: boolean;\n+}\n+\n+/**\n+ * Base stats for all structures at Tier 1\n+ *\n+ * Melt temperatures (in Celsius):\n+ * - Substation: 80°C (very fragile, needs protection)\n+ * - Turbine: 150°C (moderate, needs cooling)\n+ * - Ventilator: 200°C (can handle some heat)\n+ * - Insulator: 300°C (designed to handle heat)\n+ * - Heat Exchanger: 400°C (built for heat transfer)\n+ * - Fuel Rod: 5000°C (extremely heat resistant)\n+ *\n+ * Conductivity:\n+ * - Fuel Rod: 1.5 (high - heat spreads from fuel)\n+ * - Heat Exchanger: 2.0 (very high - designed for transfer)\n+ * - Turbine, Ventilator, Substation: 1.0 (normal)\n+ * - Empty: 0.3 (low - air gap)\n+ * - Insulator: 0.05 (very low - designed to block)\n+ */\n+export const STRUCTURE_BASE_STATS: Record<StructureType, StructureBaseStats> = {\n+  [StructureType.Empty]: {\n+    name: 'Empty',\n+    baseCost: 0,\n+    meltTemp: Infinity,\n+    conductivity: 0.3,\n+    heatGeneration: 0,\n+    heatDissipation: 0,\n+    powerGeneration: 0,\n+    maxHeatConsumption: 0,\n+    powerSaleRate: 0,\n+    baseLifetime: 0,\n+    canBeTiered: false,\n+    isSecret: false,\n+  },\n+\n+  [StructureType.FuelRod]: {\n+    name: 'Fuel Rod',\n+    baseCost: 10,\n+    meltTemp: 5000,\n+    conductivity: 1.5,\n+    heatGeneration: 10, // T1: 10 heat/tick, T2: 100 heat/tick, etc.\n+    heatDissipation: 0,\n+    powerGeneration: 0,\n+    maxHeatConsumption: 0,\n+    powerSaleRate: 0,\n+    baseLifetime: 20, // T1: 20 ticks, T2: 200 ticks (linear scaling)\n+    canBeTiered: true,\n+    isSecret: false,\n+  },\n+\n+  [StructureType.Ventilator]: {\n+    name: 'Ventilator',\n+    baseCost: 10,\n+    meltTemp: 200,\n+    conductivity: 1.0,\n+    heatGeneration: 0,\n+    heatDissipation: 5, // T1: 5 heat/tick removed\n+    powerGeneration: 0,\n+    maxHeatConsumption: 0,\n+    powerSaleRate: 0,\n+    baseLifetime: 0,\n+    canBeTiered: true,\n+    isSecret: false,\n+  },\n+\n+  [StructureType.HeatExchanger]: {\n+    name: 'Heat Exchanger',\n+    baseCost: 15,\n+    meltTemp: 400,\n+    conductivity: 2.0,\n+    heatGeneration: 0,\n+    heatDissipation: 0,\n+    powerGeneration: 0,\n+    maxHeatConsumption: 0,\n+    powerSaleRate: 0,\n+    baseLifetime: 0,\n+    canBeTiered: true,\n+    isSecret: false,\n+  },\n+\n+  [StructureType.Insulator]: {\n+    name: 'Insulator',\n+    baseCost: 8,\n+    meltTemp: 300,\n+    conductivity: 0.05,\n+    heatGeneration: 0,\n+    heatDissipation: 0,\n+    powerGeneration: 0,\n+    maxHeatConsumption: 0,\n+    powerSaleRate: 0,\n+    baseLifetime: 0,\n+    canBeTiered: true,\n+    isSecret: false,\n+  },\n+\n+  [StructureType.Turbine]: {\n+    name: 'Turbine',\n+    baseCost: 25, // T1: 25, T2: 2500 (close to user's 250 for T2 if we adjust)\n+    meltTemp: 150,\n+    conductivity: 1.0,\n+    heatGeneration: 0,\n+    heatDissipation: 0,\n+    powerGeneration: 0.1, // Power per heat consumed\n+    maxHeatConsumption: 10, // Max heat consumed per tick\n+    powerSaleRate: 0,\n+    baseLifetime: 0,\n+    canBeTiered: true,\n+    isSecret: false,\n+  },\n+\n+  [StructureType.Substation]: {\n+    name: 'Substation',\n+    baseCost: 50, // T1: 50, T2: 5000 (close to user's 500 for T2 if we adjust)\n+    meltTemp: 80,\n+    conductivity: 1.0,\n+    heatGeneration: 0,\n+    heatDissipation: 0,\n+    powerGeneration: 0,\n+    maxHeatConsumption: 0,\n+    powerSaleRate: 1, // Power units sold per tick (converted to money)\n+    baseLifetime: 0,\n+    canBeTiered: true,\n+    isSecret: false,\n+  },\n+\n+  [StructureType.VoidCell]: {\n+    name: 'Void Cell',\n+    baseCost: 100,\n+    meltTemp: Infinity, // Cannot melt\n+    conductivity: 10.0, // Extremely high - sucks in heat\n+    heatGeneration: 0,\n+    heatDissipation: 50, // Destroys heat\n+    powerGeneration: 0,\n+    maxHeatConsumption: 0,\n+    powerSaleRate: 0,\n+    baseLifetime: 0,\n+    canBeTiered: true,\n+    isSecret: true, // Unlocked via secret\n+  },\n+};\n+\n+// =============================================================================\n+// FUEL ROD ADJACENCY BONUS\n+// =============================================================================\n+\n+export const FUEL_ADJACENCY = {\n+  /** Heat multiplier per adjacent fuel rod (4-way orthogonal) */\n+  BONUS_PER_ADJACENT: 0.5, // 1 adjacent = 1.5x, 2 = 2x, 3 = 2.5x, 4 = 3x\n+};\n+\n+// =============================================================================\n+// ECONOMY\n+// =============================================================================\n+\n+export const ECONOMY = {\n+  /** Money earned per power unit sold */\n+  MONEY_PER_POWER: 1,\n+\n+  /** Refund percentage when demolishing (0 = no refund, 1 = full refund) */\n+  DEMOLISH_REFUND_RATE: 0, // Default: no refund (can be unlocked)\n+};\n+\n+// =============================================================================\n+// UPGRADES (Regular)\n+// =============================================================================\n+\n+export enum UpgradeType {\n+  // Per-tier fuel upgrades\n+  FuelLifetime = 'fuel_lifetime',\n+  FuelHeatOutput = 'fuel_heat_output',\n+\n+  // Structure upgrades\n+  TurbineConductivity = 'turbine_conductivity',\n+  InsulatorConductivity = 'insulator_conductivity',\n+  SubstationSaleRate = 'substation_sale_rate',\n+  VentilatorDissipation = 'ventilator_dissipation',\n+\n+  // Global upgrades\n+  TickSpeed = 'tick_speed',\n+  ManualClickPower = 'manual_click_power',\n+\n+  // Melt temperature upgrades (one per structure type)\n+  MeltTempFuelRod = 'melt_temp_fuel_rod',\n+  MeltTempVentilator = 'melt_temp_ventilator',\n+  MeltTempHeatExchanger = 'melt_temp_heat_exchanger',\n+  MeltTempInsulator = 'melt_temp_insulator',\n+  MeltTempTurbine = 'melt_temp_turbine',\n+  MeltTempSubstation = 'melt_temp_substation',\n+}\n+\n+export interface UpgradeDefinition {\n+  /** Display name */\n+  name: string;\n+\n+  /** Description */\n+  description: string;\n+\n+  /** Base cost for level 1 */\n+  baseCost: number;\n+\n+  /** Cost multiplier per level (exponential) */\n+  costMultiplier: number;\n+\n+  /** Maximum level (0 = unlimited) */\n+  maxLevel: number;\n+\n+  /** Improvement per level (linear, additive or multiplicative depends on type) */\n+  improvementPerLevel: number;\n+\n+  /** Whether improvement is multiplicative (true) or additive (false) */\n+  isMultiplicative: boolean;\n+\n+  /** For per-tier upgrades, which tier this applies to (null = all) */\n+  appliesTo?: Tier;\n+}\n+\n+export const UPGRADE_DEFINITIONS: Record<UpgradeType, UpgradeDefinition> = {\n+  [UpgradeType.FuelLifetime]: {\n+    name: 'Fuel Longevity',\n+    description: 'Fuel rods last longer before depleting',\n+    baseCost: 100,\n+    costMultiplier: 2.5,\n+    maxLevel: 0,\n+    improvementPerLevel: 10, // +10 ticks per level\n+    isMultiplicative: false,\n+  },\n+\n+  [UpgradeType.FuelHeatOutput]: {\n+    name: 'Enriched Fuel',\n+    description: 'Fuel rods generate more heat per tick',\n+    baseCost: 150,\n+    costMultiplier: 2.5,\n+    maxLevel: 0,\n+    improvementPerLevel: 5, // +5 heat per level\n+    isMultiplicative: false,\n+  },\n+\n+  [UpgradeType.TurbineConductivity]: {\n+    name: 'Turbine Efficiency',\n+    description: 'Turbines transfer heat more effectively',\n+    baseCost: 200,\n+    costMultiplier: 2.0,\n+    maxLevel: 10,\n+    improvementPerLevel: 0.2, // +0.2 conductivity per level\n+    isMultiplicative: false,\n+  },\n+\n+  [UpgradeType.InsulatorConductivity]: {\n+    name: 'Advanced Insulation',\n+    description: 'Insulators block even more heat',\n+    baseCost: 150,\n+    costMultiplier: 2.0,\n+    maxLevel: 10,\n+    improvementPerLevel: 0.5, // 0.5x multiplier per level (gets lower)\n+    isMultiplicative: true,\n+  },\n+\n+  [UpgradeType.SubstationSaleRate]: {\n+    name: 'Power Grid Upgrade',\n+    description: 'Substations sell more power per tick',\n+    baseCost: 500,\n+    costMultiplier: 3.0,\n+    maxLevel: 0,\n+    improvementPerLevel: 1, // +1 power/tick per level\n+    isMultiplicative: false,\n+  },\n+\n+  [UpgradeType.VentilatorDissipation]: {\n+    name: 'Improved Cooling',\n+    description: 'Ventilators remove more heat per tick',\n+    baseCost: 100,\n+    costMultiplier: 2.0,\n+    maxLevel: 0,\n+    improvementPerLevel: 2, // +2 heat dissipation per level\n+    isMultiplicative: false,\n+  },\n+\n+  [UpgradeType.TickSpeed]: {\n+    name: 'Overclock',\n+    description: 'Game runs faster (careful: heat accumulates faster too!)',\n+    baseCost: 1000,\n+    costMultiplier: 5.0,\n+    maxLevel: 5,\n+    improvementPerLevel: 0.8, // 0.8x tick interval per level (faster)\n+    isMultiplicative: true,\n+  },\n+\n+  [UpgradeType.ManualClickPower]: {\n+    name: 'Bigger Buttons',\n+    description: 'Manual generation gives more money per click',\n+    baseCost: 50,\n+    costMultiplier: 2.0,\n+    maxLevel: 0,\n+    improvementPerLevel: 1, // +1 per click per level\n+    isMultiplicative: false,\n+  },\n+\n+  // Melt temperature upgrades\n+  [UpgradeType.MeltTempFuelRod]: {\n+    name: 'Reinforced Fuel Casing',\n+    description: 'Fuel rods can withstand higher temperatures',\n+    baseCost: 500,\n+    costMultiplier: 3.0,\n+    maxLevel: 10,\n+    improvementPerLevel: 500, // +500°C per level\n+    isMultiplicative: false,\n+  },\n+\n+  [UpgradeType.MeltTempVentilator]: {\n+    name: 'Heat-Resistant Fans',\n+    description: 'Ventilators can withstand higher temperatures',\n+    baseCost: 100,\n+    costMultiplier: 2.5,\n+    maxLevel: 10,\n+    improvementPerLevel: 20, // +20°C per level\n+    isMultiplicative: false,\n+  },\n+\n+  [UpgradeType.MeltTempHeatExchanger]: {\n+    name: 'Hardened Exchangers',\n+    description: 'Heat exchangers can withstand higher temperatures',\n+    baseCost: 150,\n+    costMultiplier: 2.5,\n+    maxLevel: 10,\n+    improvementPerLevel: 40, // +40°C per level\n+    isMultiplicative: false,\n+  },\n+\n+  [UpgradeType.MeltTempInsulator]: {\n+    name: 'Advanced Ceramics',\n+    description: 'Insulators can withstand higher temperatures',\n+    baseCost: 120,\n+    costMultiplier: 2.5,\n+    maxLevel: 10,\n+    improvementPerLevel: 30, // +30°C per level\n+    isMultiplicative: false,\n+  },\n+\n+  [UpgradeType.MeltTempTurbine]: {\n+    name: 'Reinforced Turbines',\n+    description: 'Turbines can withstand higher temperatures',\n+    baseCost: 200,\n+    costMultiplier: 2.5,\n+    maxLevel: 10,\n+    improvementPerLevel: 15, // +15°C per level\n+    isMultiplicative: false,\n+  },\n+\n+  [UpgradeType.MeltTempSubstation]: {\n+    name: 'Industrial Substations',\n+    description: 'Substations can withstand higher temperatures',\n+    baseCost: 300,\n+    costMultiplier: 3.0,\n+    maxLevel: 10,\n+    improvementPerLevel: 10, // +10°C per level (they're fragile!)\n+    isMultiplicative: false,\n+  },\n+};\n+\n+// =============================================================================\n+// SECRET UPGRADES\n+// =============================================================================\n+\n+export enum SecretUpgradeType {\n+  ExoticFuel = 'exotic_fuel',\n+  ReactorExpansion1 = 'reactor_expansion_1', // 16 -> 17\n+  ReactorExpansion2 = 'reactor_expansion_2', // 17 -> 18\n+  ReactorExpansion3 = 'reactor_expansion_3', // 18 -> 19\n+  ReactorExpansion4 = 'reactor_expansion_4', // 19 -> 20\n+  VoidCellUnlock = 'void_cell_unlock',\n+  Overclock = 'overclock',\n+  Salvage = 'salvage',\n+}\n+\n+export interface SecretUpgradeDefinition {\n+  /** Display name (shown after unlock) */\n+  name: string;\n+\n+  /** Description (shown after unlock) */\n+  description: string;\n+\n+  /** Hint shown before unlock (cryptic) */\n+  hint: string;\n+\n+  /** Cost to purchase after unlock condition is met */\n+  cost: number;\n+\n+  /** Whether this is a toggle (can be turned on/off) */\n+  isToggle: boolean;\n+}\n+\n+export const SECRET_UPGRADE_DEFINITIONS: Record<SecretUpgradeType, SecretUpgradeDefinition> = {\n+  [SecretUpgradeType.ExoticFuel]: {\n+    name: 'Exotic Fuel Synthesis',\n+    description: 'Unlock exotic fuel rods that generate more heat the hotter they get. Toggle to build exotic variants.',\n+    hint: '???',\n+    cost: 1000,\n+    isToggle: true,\n+  },\n+\n+  [SecretUpgradeType.ReactorExpansion1]: {\n+    name: 'Reactor Expansion I',\n+    description: 'Expand the reactor grid to 17x17',\n+    hint: '???',\n+    cost: 10_000,\n+    isToggle: false,\n+  },\n+\n+  [SecretUpgradeType.ReactorExpansion2]: {\n+    name: 'Reactor Expansion II',\n+    description: 'Expand the reactor grid to 18x18',\n+    hint: '???',\n+    cost: 100_000,\n+    isToggle: false,\n+  },\n+\n+  [SecretUpgradeType.ReactorExpansion3]: {\n+    name: 'Reactor Expansion III',\n+    description: 'Expand the reactor grid to 19x19',\n+    hint: '???',\n+    cost: 1_000_000,\n+    isToggle: false,\n+  },\n+\n+  [SecretUpgradeType.ReactorExpansion4]: {\n+    name: 'Reactor Expansion IV',\n+    description: 'Expand the reactor grid to 20x20 (maximum)',\n+    hint: '???',\n+    cost: 10_000_000,\n+    isToggle: false,\n+  },\n+\n+  [SecretUpgradeType.VoidCellUnlock]: {\n+    name: 'Void Technology',\n+    description: 'Unlock Void Cells - mysterious structures that absorb massive amounts of heat',\n+    hint: '???',\n+    cost: 5000,\n+    isToggle: false,\n+  },\n+\n+  [SecretUpgradeType.Overclock]: {\n+    name: 'Temporal Acceleration',\n+    description: 'Unlock 2x tick speed upgrade',\n+    hint: '???',\n+    cost: 10_000,\n+    isToggle: false,\n+  },\n+\n+  [SecretUpgradeType.Salvage]: {\n+    name: 'Salvage Operations',\n+    description: 'Get 50% refund when demolishing structures',\n+    hint: '???',\n+    cost: 2000,\n+    isToggle: false,\n+  },\n+};\n+\n+// =============================================================================\n+// SECRET UNLOCK CONDITIONS\n+// =============================================================================\n+\n+export interface SecretUnlockCondition {\n+  type: 'meltdown' | 'fill_grid' | 'survive_heat' | 'total_earned' | 'demolish_count';\n+  /** Threshold value for the condition */\n+  threshold: number;\n+  /** For survive_heat: percentage of max temp (0.9 = 90%) */\n+  heatPercentage?: number;\n+  /** For survive_heat: number of ticks to survive */\n+  survivalTicks?: number;\n+}\n+\n+export const SECRET_UNLOCK_CONDITIONS: Record<SecretUpgradeType, SecretUnlockCondition> = {\n+  [SecretUpgradeType.ExoticFuel]: {\n+    type: 'meltdown',\n+    threshold: 1, // First meltdown\n+  },\n+\n+  [SecretUpgradeType.ReactorExpansion1]: {\n+    type: 'fill_grid',\n+    threshold: 256, // All 16x16 cells filled\n+  },\n+\n+  [SecretUpgradeType.ReactorExpansion2]: {\n+    type: 'fill_grid',\n+    threshold: 289, // All 17x17 cells filled\n+  },\n+\n+  [SecretUpgradeType.ReactorExpansion3]: {\n+    type: 'fill_grid',\n+    threshold: 324, // All 18x18 cells filled\n+  },\n+\n+  [SecretUpgradeType.ReactorExpansion4]: {\n+    type: 'fill_grid',\n+    threshold: 361, // All 19x19 cells filled\n+  },\n+\n+  [SecretUpgradeType.VoidCellUnlock]: {\n+    type: 'survive_heat',\n+    threshold: 100, // 100 ticks\n+    heatPercentage: 0.9, // 90% of max heat\n+    survivalTicks: 100,\n+  },\n+\n+  [SecretUpgradeType.Overclock]: {\n+    type: 'total_earned',\n+    threshold: 10_000, // 10,000 total money earned\n+  },\n+\n+  [SecretUpgradeType.Salvage]: {\n+    type: 'demolish_count',\n+    threshold: 100, // Demolish 100 structures\n+  },\n+};\n+\n+// =============================================================================\n+// EXOTIC FUEL MECHANICS\n+// =============================================================================\n+\n+export const EXOTIC_FUEL = {\n+  /** Base heat multiplier at 0°C */\n+  BASE_MULTIPLIER: 1.0,\n+\n+  /** Additional multiplier per 1000°C of current temperature */\n+  HEAT_SCALING: 0.5, // At 2000°C: 1.0 + (2000/1000 * 0.5) = 2.0x heat output\n+\n+  /** Maximum multiplier cap */\n+  MAX_MULTIPLIER: 5.0,\n+};\n+\n+// =============================================================================\n+// HELPER FUNCTIONS\n+// =============================================================================\n+\n+/**\n+ * Calculate the cost of a structure at a given tier\n+ */\n+export function getStructureCost(type: StructureType, tier: Tier): number {\n+  const baseStats = STRUCTURE_BASE_STATS[type];\n+  // Adjust tier multiplier to match user's specified costs more closely\n+  // User said T2 fuel rod = 100, turbine = 250, substation = 500\n+  // With base costs of 10, 25, 50 and T2 multiplier of 10, we get 100, 250, 500\n+  const tierMultiplier = Math.pow(10, tier - 1);\n+  return Math.round(baseStats.baseCost * tierMultiplier);\n+}\n+\n+/**\n+ * Calculate fuel rod lifetime at a given tier (with upgrades)\n+ */\n+export function getFuelLifetime(tier: Tier, upgradeLevel: number): number {\n+  const baseStats = STRUCTURE_BASE_STATS[StructureType.FuelRod];\n+  // Lifetime scales linearly with tier: T1=20, T2=200, T3=2000\n+  const tierLifetime = baseStats.baseLifetime * Math.pow(10, tier - 1);\n+  const upgradeBonus = upgradeLevel * UPGRADE_DEFINITIONS[UpgradeType.FuelLifetime].improvementPerLevel;\n+  return tierLifetime + upgradeBonus;\n+}\n+\n+/**\n+ * Calculate fuel rod heat generation at a given tier (with upgrades)\n+ */\n+export function getFuelHeatGeneration(tier: Tier, upgradeLevel: number): number {\n+  const baseStats = STRUCTURE_BASE_STATS[StructureType.FuelRod];\n+  // Heat scales exponentially with tier: T1=10, T2=100, T3=1000\n+  const tierHeat = baseStats.heatGeneration * Math.pow(10, tier - 1);\n+  const upgradeBonus = upgradeLevel * UPGRADE_DEFINITIONS[UpgradeType.FuelHeatOutput].improvementPerLevel;\n+  return tierHeat + upgradeBonus;\n+}\n+\n+/**\n+ * Calculate upgrade cost at a given level\n+ */\n+export function getUpgradeCost(upgradeType: UpgradeType, level: number): number {\n+  const definition = UPGRADE_DEFINITIONS[upgradeType];\n+  return Math.round(definition.baseCost * Math.pow(definition.costMultiplier, level));\n+}\n+\n+/**\n+ * Calculate secret upgrade unlock progress\n+ */\n+export function getSecretUnlockProgress(\n+  upgradeType: SecretUpgradeType,\n+  gameStats: {\n+    meltdownCount: number;\n+    filledCells: number;\n+    totalMoneyEarned: number;\n+    demolishCount: number;\n+    ticksAtHighHeat: number;\n+  }\n+): { current: number; required: number; unlocked: boolean } {\n+  const condition = SECRET_UNLOCK_CONDITIONS[upgradeType];\n+  let current = 0;\n+\n+  switch (condition.type) {\n+    case 'meltdown':\n+      current = gameStats.meltdownCount;\n+      break;\n+    case 'fill_grid':\n+      current = gameStats.filledCells;\n+      break;\n+    case 'total_earned':\n+      current = gameStats.totalMoneyEarned;\n+      break;\n+    case 'demolish_count':\n+      current = gameStats.demolishCount;\n+      break;\n+    case 'survive_heat':\n+      current = gameStats.ticksAtHighHeat;\n+      break;\n+  }\n+\n+  return {\n+    current,\n+    required: condition.threshold,\n+    unlocked: current >= condition.threshold,\n+  };\n+}",
+          "actualWorkers": 1
+        },
+        "id": "chromium",
+        "name": "chromium",
+        "testDir": "/home/runner/work/claudetest123/claudetest123/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 30000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "html",
+        {
+          "outputFolder": "playwright-report"
+        }
+      ],
+      [
+        "list",
+        null
+      ],
+      [
+        "json",
+        {
+          "outputFile": "test-results/results.json"
+        }
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "runAgents": "none",
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.58.0",
+    "workers": 1,
+    "webServer": {
+      "command": "npm run serve",
+      "url": "http://localhost:3000",
+      "reuseExistingServer": false,
+      "timeout": 120000
+    }
+  },
+  "suites": [
+    {
+      "title": "heat-game.spec.ts",
+      "file": "heat-game.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Heat Game E2E Tests",
+          "file": "heat-game.spec.ts",
+          "line": 40,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should load the game and display initial state",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 469,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-30T22:34:32.661Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-2428b-e-and-display-initial-state-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-2428b-e-and-display-initial-state-chromium/attachments/browser-logs-252e98eebb6d2a6fd5612fd184955e74f7d8fa0e.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-1f7f90ca45f76c134f4d",
+              "file": "heat-game.spec.ts",
+              "line": 85,
+              "column": 3
+            },
+            {
+              "title": "should place a Fuel Rod on the grid",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 624,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-30T22:34:34.773Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-05fff-lace-a-Fuel-Rod-on-the-grid-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-05fff-lace-a-Fuel-Rod-on-the-grid-chromium/attachments/browser-logs-daa597c1e58cdd3735064670bc098a56f535a7d5.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-a31bde006f3c29450fad",
+              "file": "heat-game.spec.ts",
+              "line": 115,
+              "column": 3
+            },
+            {
+              "title": "should place multiple structures and observe heat dynamics",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1214,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-30T22:34:35.414Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-edba4-s-and-observe-heat-dynamics-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-edba4-s-and-observe-heat-dynamics-chromium/attachments/browser-logs-a9526112523c68aa24fe78334be3ec2af4a1ba62.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-2ed04ebe32d9c471053a",
+              "file": "heat-game.spec.ts",
+              "line": 145,
+              "column": 3
+            },
+            {
+              "title": "should demolish a structure with right-click",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 653,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-30T22:34:36.645Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-53724--structure-with-right-click-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-53724--structure-with-right-click-chromium/attachments/browser-logs-d97b4f4e87a5cc31e1b5dee61d33b7cf6ee7bb2f.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-ff211d87a2ad19067056",
+              "file": "heat-game.spec.ts",
+              "line": 182,
+              "column": 3
+            },
+            {
+              "title": "should build a power generation setup",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1686,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-30T22:34:37.312Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-206ae-ld-a-power-generation-setup-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-206ae-ld-a-power-generation-setup-chromium/attachments/browser-logs-6db27ca250b3a1a4083663dd5a90aeedb0e1a354.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-abe0096aa1a1c45a3b34",
+              "file": "heat-game.spec.ts",
+              "line": 210,
+              "column": 3
+            },
+            {
+              "title": "should show heat buildup with clustered fuel rods",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1649,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-30T22:34:39.009Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-1ce31-up-with-clustered-fuel-rods-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-1ce31-up-with-clustered-fuel-rods-chromium/attachments/browser-logs-4108f70a5376472a80710ba1c287f526e1cfc9b4.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-ac87d21624a439db98b8",
+              "file": "heat-game.spec.ts",
+              "line": 247,
+              "column": 3
+            },
+            {
+              "title": "should not allow building without sufficient money",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 554,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-30T22:34:40.675Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-ee0f6-ng-without-sufficient-money-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-ee0f6-ng-without-sufficient-money-chromium/attachments/browser-logs-67852c21b9cbe344288f7cfb81aa3e88ded21441.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-b096005e15a85f67c2a8",
+              "file": "heat-game.spec.ts",
+              "line": 285,
+              "column": 3
+            },
+            {
+              "title": "should handle rapid clicking on the grid",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1209,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-30T22:34:41.248Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-c664c--rapid-clicking-on-the-grid-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-c664c--rapid-clicking-on-the-grid-chromium/attachments/browser-logs-8830c25d0c901f07d14f24299509ec6ff3fc0a0b.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-1b3f7a34798ed668be9c",
+              "file": "heat-game.spec.ts",
+              "line": 316,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-01-30T22:34:26.473Z",
+    "duration": 16061.467,
+    "expected": 8,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}
