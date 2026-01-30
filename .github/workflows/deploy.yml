@@ -35,8 +35,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build TypeScript
-        run: npm run build
+      - name: Build TypeScript and update SW version
+        run: npm run build:prod
 
       - name: Setup Pages
         uses: actions/configure-pages@v4

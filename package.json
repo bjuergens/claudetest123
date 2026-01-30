@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "tsc",
+    "build:prod": "tsc && node scripts/update-sw-version.js",
     "watch": "tsc --watch",
     "serve": "npm run build && npx serve deploy",
     "dev": "concurrently \"tsc --watch\" \"npx serve deploy\"",

@@ -1,13 +1,13 @@
 {
-  "name": "Idle Game PWA",
-  "short_name": "IdleGame",
-  "description": "A simple idle game progressive web app",
+  "name": "Heat Management Game",
+  "short_name": "HeatGame",
+  "description": "A heat management idle game - build reactors, manage heat flow, generate power",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#2196F3",
-  "orientation": "portrait-primary",
+  "background_color": "#1a1a1a",
+  "theme_color": "#1a1a1a",
+  "orientation": "any",
   "icons": [
     {
       "src": "icons/icon-192.svg",
