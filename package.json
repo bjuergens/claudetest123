@@ -1,0 +1,17 @@
+{
+  "name": "idle-game-pwa",
+  "version": "1.0.0",
+  "description": "A simple PWA idle game built with TypeScript",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "serve": "npm run build && npx serve deploy",
+    "dev": "concurrently \"tsc --watch\" \"npx serve deploy\""
+  },
+  "devDependencies": {
+    "typescript": "^5.3.0",
+    "concurrently": "^8.2.0"
+  },
+  "license": "AGPL-3.0"
+}

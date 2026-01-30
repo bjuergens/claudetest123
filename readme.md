@@ -1,6 +1,6 @@
 # Idle Game PWA
 
-A simple idle game built as a Progressive Web App (PWA).
+A simple idle game built as a Progressive Web App (PWA) with TypeScript.
 
 ## Live Demo
 
@@ -21,36 +21,53 @@ Test it directly on your mobile device - the PWA will work perfectly in your bro
 
 ```
 .
-├── deploy/              # GitHub Pages deployment folder
+├── src/                 # TypeScript source files
+│   └── app.ts           # Main app logic
+├── deploy/              # GitHub Pages deployment folder (build output)
 │   ├── index.html       # Main HTML file with PWA meta tags
 │   ├── manifest.json    # PWA manifest configuration
 │   ├── sw.js            # Service Worker for offline functionality
-│   ├── app.js           # App logic and PWA registration
+│   ├── app.js           # Compiled from src/app.ts
 │   ├── styles.css       # Styling
 │   └── icons/           # App icons
 ├── .github/workflows/   # GitHub Actions for deployment
-├── claude.md            # Claude AI instructions
+├── tsconfig.json        # TypeScript configuration
+├── package.json         # npm dependencies and scripts
 └── LICENSE              # License file
 ```
 
 ## Local Development
 
-1. Serve the files from the deploy folder using a local web server:
+1. Install dependencies:
    ```bash
-   # Using Python
-   cd deploy && python3 -m http.server 8000
-
-   # Using Node.js
-   npx serve deploy
+   npm install
    ```
 
-2. Open your browser and navigate to `http://localhost:8000`
+2. Build and serve:
+   ```bash
+   # Build once and serve
+   npm run serve
 
-3. The PWA should be installable (look for the install button in your browser)
+   # Or: watch mode with live server (recommended for development)
+   npm run dev
+   ```
+
+3. Open your browser and navigate to `http://localhost:3000`
+
+4. The PWA should be installable (look for the install button in your browser)
+
+## Build Commands
+
+```bash
+npm run build    # Compile TypeScript to deploy/
+npm run watch    # Watch mode - recompile on changes
+npm run serve    # Build + start local server
+npm run dev      # Watch + serve concurrently
+```
 
 ## Development
 
-The basic PWA infrastructure is now in place. Ready to add idle game mechanics!
+The TypeScript source is in `src/`. The compiled JavaScript goes to `deploy/`, which is served by GitHub Pages.
 
 ### Next Steps
 
