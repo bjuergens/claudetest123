@@ -23,7 +23,15 @@ A simple idle game built as a Progressive Web App (PWA).
     └── icon-512.svg   # 512x512 icon
 ```
 
-## Getting Started
+## Live Demo
+
+The app is automatically deployed to GitHub Pages:
+
+**https://bjuergens.github.io/claudetest123/**
+
+Test it directly on your mobile device - the PWA will work perfectly in your browser and can be installed to your home screen!
+
+## Local Development
 
 1. Serve the files using a local web server (required for PWA features):
    ```bash
