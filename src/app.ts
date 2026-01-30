@@ -88,15 +88,60 @@ if ('serviceWorker' in navigator) {
         updatePWAStatus('Registration failed');
       });
 
-    // Reload page when new SW takes over
-    let refreshing = false;
+    // When new SW takes over, show reload banner instead of auto-reloading
     navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (refreshing) return;
-      refreshing = true;
-      console.log('SW: Controller changed, reloading...');
-      window.location.reload();
+      console.log('SW: Controller changed, showing reload banner');
+      showReloadBanner();
     });
   });
+}
+
+// Show a banner prompting user to reload for updates
+function showReloadBanner(): void {
+  // Check if banner already exists
+  if (document.getElementById('reload-banner')) return;
+
+  const banner = document.createElement('div');
+  banner.id = 'reload-banner';
+  banner.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    background: #4a90d9;
+    color: white;
+    padding: 12px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 10000;
+    font-family: system-ui, sans-serif;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  `;
+
+  const message = document.createElement('span');
+  message.textContent = 'A new version is available!';
+
+  const reloadButton = document.createElement('button');
+  reloadButton.textContent = 'Reload to update';
+  reloadButton.style.cssText = `
+    background: white;
+    color: #4a90d9;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: bold;
+  `;
+  reloadButton.addEventListener('click', () => {
+    window.location.reload();
+  });
+
+  banner.appendChild(message);
+  banner.appendChild(reloadButton);
+  document.body.prepend(banner);
+
+  updatePWAStatus('Reload to update');
 }
 
 // Update button click handler

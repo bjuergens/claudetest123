@@ -57,17 +57,7 @@ test.describe('Heat Game E2E Tests', () => {
     // Navigate to the game
     await page.goto('/');
 
-    // Wait for initial load
-    await page.waitForSelector('#game-canvas', { state: 'visible' });
-
-    // Wait for service worker to potentially reload the page
-    // The SW triggers a reload on first install, so we need to wait for stability
-    await page.waitForTimeout(500);
-
-    // Wait for network to be idle (SW finished)
-    await page.waitForLoadState('networkidle');
-
-    // Re-verify the game is fully loaded after potential SW reload
+    // Wait for the game to be fully loaded
     await page.waitForSelector('#game-canvas', { state: 'visible' });
     await page.waitForSelector('.heat-game-build-menu button', { state: 'visible' });
 
