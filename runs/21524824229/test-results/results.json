@@ -1,0 +1,512 @@
+{
+  "config": {
+    "configFile": "/home/runner/work/claudetest123/claudetest123/playwright.config.ts",
+    "rootDir": "/home/runner/work/claudetest123/claudetest123/e2e",
+    "forbidOnly": true,
+    "fullyParallel": true,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "ci": {
+        "commitHref": "https://github.com/bjuergens/claudetest123/commit/29b8f800dbf3ab6f2ad35c11a372e44ab336573a",
+        "commitHash": "29b8f800dbf3ab6f2ad35c11a372e44ab336573a",
+        "prHref": "https://github.com/bjuergens/claudetest123/pull/7",
+        "prTitle": "Add end-to-end tests with Playwright",
+        "prBaseHash": "91952389cfb3c0a5764880dfdcb2d282b876630b",
+        "buildHref": "https://github.com/bjuergens/claudetest123/actions/runs/21524824229"
+      },
+      "gitCommit": {
+        "shortHash": "29b8f80",
+        "hash": "29b8f800dbf3ab6f2ad35c11a372e44ab336573a",
+        "subject": "Merge 4617888eb152bfe27ee5b8dda3942901f76f7c3e into 91952389cfb3c0a5764880dfdcb2d282b876630b",
+        "body": "Merge 4617888eb152bfe27ee5b8dda3942901f76f7c3e into 91952389cfb3c0a5764880dfdcb2d282b876630b\n",
+        "author": {
+          "name": "Björn Jürgens",
+          "email": "4362465+bjuergens@users.noreply.github.com",
+          "time": 1769794459000
+        },
+        "committer": {
+          "name": "GitHub",
+          "email": "noreply@github.com",
+          "time": 1769794459000
+        },
+        "branch": "HEAD"
+      },
+      "gitDiff": "diff --git a/.github/workflows/e2e-tests.yml b/.github/workflows/e2e-tests.yml\nnew file mode 100644\nindex 0000000..00c5513\n--- /dev/null\n+++ b/.github/workflows/e2e-tests.yml\n@@ -0,0 +1,182 @@\n+name: E2E Tests\n+\n+on:\n+  pull_request:\n+    branches:\n+      - main\n+      - master\n+  push:\n+    branches:\n+      - main\n+      - master\n+  workflow_dispatch: # Allow manual trigger\n+\n+# Allow the workflow to push to test-results branch\n+permissions:\n+  contents: write\n+\n+jobs:\n+  e2e:\n+    name: Run E2E Tests\n+    runs-on: ubuntu-latest\n+    timeout-minutes: 5\n+\n+    steps:\n+      - name: Checkout\n+        uses: actions/checkout@v4\n+\n+      - name: Setup Node.js\n+        uses: actions/setup-node@v4\n+        with:\n+          node-version: '20'\n+          cache: 'npm'\n+\n+      - name: Install dependencies\n+        run: npm ci\n+\n+      - name: Build TypeScript\n+        run: npm run build\n+\n+      - name: Install Playwright Browsers\n+        run: npx playwright install --with-deps chromium\n+\n+      - name: Run E2E tests\n+        id: e2e-tests\n+        run: npm run test:e2e\n+        timeout-minutes: 2\n+        continue-on-error: true\n+\n+      - name: Create test summary\n+        if: always()\n+        run: |\n+          # Create a summary JSON file with metadata\n+          mkdir -p test-results\n+          cat > test-results/summary.json << EOF\n+          {\n+            \"run_id\": \"${{ github.run_id }}\",\n+            \"run_number\": \"${{ github.run_number }}\",\n+            \"sha\": \"${{ github.sha }}\",\n+            \"ref\": \"${{ github.ref }}\",\n+            \"event\": \"${{ github.event_name }}\",\n+            \"actor\": \"${{ github.actor }}\",\n+            \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\n+            \"test_outcome\": \"${{ steps.e2e-tests.outcome }}\",\n+            \"repository\": \"${{ github.repository }}\"\n+          }\n+          EOF\n+\n+      - name: Upload test results artifact\n+        uses: actions/upload-artifact@v4\n+        if: always()\n+        with:\n+          name: e2e-test-results\n+          path: |\n+            test-results/\n+            playwright-report/\n+          retention-days: 30\n+\n+      - name: Publish test results to branch\n+        if: always()\n+        run: |\n+          # Configure git\n+          git config --global user.name \"github-actions[bot]\"\n+          git config --global user.email \"github-actions[bot]@users.noreply.github.com\"\n+\n+          # Create a unique directory name for this run\n+          RUN_DIR=\"runs/${{ github.run_id }}\"\n+\n+          # Save test results to a temporary location\n+          mkdir -p /tmp/test-output\n+          cp -r test-results /tmp/test-output/ 2>/dev/null || true\n+          cp -r playwright-report /tmp/test-output/ 2>/dev/null || true\n+\n+          # Fetch or create the test-results branch\n+          git fetch origin test-results:test-results 2>/dev/null || true\n+\n+          # Check if branch exists\n+          if git show-ref --verify --quiet refs/heads/test-results; then\n+            git checkout test-results\n+          else\n+            # Create orphan branch for test results\n+            git checkout --orphan test-results\n+            git rm -rf . 2>/dev/null || true\n+            echo \"# E2E Test Results\" > README.md\n+            echo \"\" >> README.md\n+            echo \"This branch contains e2e test results published by GitHub Actions.\" >> README.md\n+            echo \"\" >> README.md\n+            echo \"## Accessing Results\" >> README.md\n+            echo \"\" >> README.md\n+            echo \"Results are organized by run ID under the \\`runs/\\` directory.\" >> README.md\n+            echo \"\" >> README.md\n+            echo \"Raw content URLs:\" >> README.md\n+            echo \"\\`\\`\\`\" >> README.md\n+            echo \"https://raw.githubusercontent.com/${{ github.repository }}/test-results/runs/<run_id>/test-results/summary.json\" >> README.md\n+            echo \"https://raw.githubusercontent.com/${{ github.repository }}/test-results/runs/<run_id>/test-results/screenshots/<name>.png\" >> README.md\n+            echo \"https://raw.githubusercontent.com/${{ github.repository }}/test-results/runs/<run_id>/test-results/logs/<name>.log\" >> README.md\n+            echo \"\\`\\`\\`\" >> README.md\n+            git add README.md\n+          fi\n+\n+          # Create directory for this run\n+          mkdir -p \"$RUN_DIR\"\n+\n+          # Copy test results\n+          cp -r /tmp/test-output/* \"$RUN_DIR/\" 2>/dev/null || true\n+\n+          # Update latest symlink info\n+          echo \"${{ github.run_id }}\" > latest-run-id.txt\n+\n+          # Create an index of recent runs\n+          cat > \"$RUN_DIR/index.json\" << EOF\n+          {\n+            \"run_id\": \"${{ github.run_id }}\",\n+            \"run_number\": \"${{ github.run_number }}\",\n+            \"sha\": \"${{ github.sha }}\",\n+            \"ref\": \"${{ github.ref }}\",\n+            \"event\": \"${{ github.event_name }}\",\n+            \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\n+            \"test_outcome\": \"${{ steps.e2e-tests.outcome }}\",\n+            \"files\": {\n+              \"summary\": \"test-results/summary.json\",\n+              \"results_json\": \"test-results/results.json\",\n+              \"screenshots_dir\": \"test-results/screenshots/\",\n+              \"logs_dir\": \"test-results/logs/\",\n+              \"playwright_report\": \"playwright-report/\"\n+            },\n+            \"raw_base_url\": \"https://raw.githubusercontent.com/${{ github.repository }}/test-results/$RUN_DIR\"\n+          }\n+          EOF\n+\n+          # List all files for debugging\n+          echo \"Files in $RUN_DIR:\"\n+          find \"$RUN_DIR\" -type f 2>/dev/null || echo \"No files found\"\n+\n+          # Add and commit\n+          git add -A\n+          git commit -m \"E2E test results for run #${{ github.run_number }} (${{ github.sha }})\" || echo \"No changes to commit\"\n+\n+          # Push to test-results branch\n+          git push origin test-results --force\n+\n+      - name: Output results location\n+        if: always()\n+        run: |\n+          echo \"## E2E Test Results\" >> $GITHUB_STEP_SUMMARY\n+          echo \"\" >> $GITHUB_STEP_SUMMARY\n+          echo \"Test outcome: **${{ steps.e2e-tests.outcome }}**\" >> $GITHUB_STEP_SUMMARY\n+          echo \"\" >> $GITHUB_STEP_SUMMARY\n+          echo \"### Raw Content URLs\" >> $GITHUB_STEP_SUMMARY\n+          echo \"\" >> $GITHUB_STEP_SUMMARY\n+          echo \"Base URL: \\`https://raw.githubusercontent.com/${{ github.repository }}/test-results/runs/${{ github.run_id }}/\\`\" >> $GITHUB_STEP_SUMMARY\n+          echo \"\" >> $GITHUB_STEP_SUMMARY\n+          echo \"- **Summary**: https://raw.githubusercontent.com/${{ github.repository }}/test-results/runs/${{ github.run_id }}/test-results/summary.json\" >> $GITHUB_STEP_SUMMARY\n+          echo \"- **Test Results JSON**: https://raw.githubusercontent.com/${{ github.repository }}/test-results/runs/${{ github.run_id }}/test-results/results.json\" >> $GITHUB_STEP_SUMMARY\n+          echo \"- **Run Index**: https://raw.githubusercontent.com/${{ github.repository }}/test-results/runs/${{ github.run_id }}/index.json\" >> $GITHUB_STEP_SUMMARY\n+          echo \"\" >> $GITHUB_STEP_SUMMARY\n+          echo \"### Latest Run\" >> $GITHUB_STEP_SUMMARY\n+          echo \"\" >> $GITHUB_STEP_SUMMARY\n+          echo \"https://raw.githubusercontent.com/${{ github.repository }}/test-results/latest-run-id.txt\" >> $GITHUB_STEP_SUMMARY\n+\n+      - name: Fail if tests failed\n+        if: steps.e2e-tests.outcome == 'failure'\n+        run: exit 1\ndiff --git a/.gitignore b/.gitignore\nindex 3b4f4b9..26510b3 100644\n--- a/.gitignore\n+++ b/.gitignore\n@@ -16,3 +16,8 @@ Thumbs.db\n # Logs\n *.log\n npm-debug.log*\n+\n+# Playwright test output\n+test-results/\n+playwright-report/\n+playwright/.cache/\ndiff --git a/deploy/sw.js b/deploy/sw.js\nindex 1e7493d..73dc1a0 100644\n--- a/deploy/sw.js\n+++ b/deploy/sw.js\n@@ -67,7 +67,8 @@ self.addEventListener('activate', (event) => {\n       );\n     })\n   );\n-  self.clients.claim();\n+  // Don't call clients.claim() - let the page control when to use the new SW\n+  // This prevents automatic reload on first install\n });\n \n // Listen for skip waiting message from the app\ndiff --git a/e2e/heat-game.spec.ts b/e2e/heat-game.spec.ts\nnew file mode 100644\nindex 0000000..f1d6bf7\n--- /dev/null\n+++ b/e2e/heat-game.spec.ts\n@@ -0,0 +1,344 @@\n+import { test, expect, Page, ConsoleMessage } from '@playwright/test';\n+import * as fs from 'fs';\n+import * as path from 'path';\n+\n+// Game constants (matching the app.ts renderer config)\n+const GRID_SIZE = 16;\n+const CELL_SIZE = 28;  // Must match app.ts cellSize\n+const GRID_PADDING = 8; // Must match app.ts gridPadding\n+\n+/**\n+ * Calculate canvas click coordinates for a grid cell\n+ */\n+function getCellClickPosition(cellX: number, cellY: number): { x: number; y: number } {\n+  return {\n+    x: GRID_PADDING + cellX * CELL_SIZE + CELL_SIZE / 2,\n+    y: GRID_PADDING + cellY * CELL_SIZE + CELL_SIZE / 2,\n+  };\n+}\n+\n+/**\n+ * Save logs to a file in the test results directory\n+ */\n+async function saveLogs(testInfo: any, logs: string[], filename: string) {\n+  const logsDir = path.join('test-results', 'logs');\n+  if (!fs.existsSync(logsDir)) {\n+    fs.mkdirSync(logsDir, { recursive: true });\n+  }\n+\n+  const logFile = path.join(logsDir, `${testInfo.title.replace(/\\s+/g, '-')}-${filename}.log`);\n+  fs.writeFileSync(logFile, logs.join('\\n'));\n+  await testInfo.attach(filename, { path: logFile, contentType: 'text/plain' });\n+}\n+\n+// Ensure screenshots directory exists before tests\n+const screenshotsDir = 'test-results/screenshots';\n+if (!fs.existsSync(screenshotsDir)) {\n+  fs.mkdirSync(screenshotsDir, { recursive: true });\n+}\n+\n+test.describe('Heat Game E2E Tests', () => {\n+  let consoleLogs: string[] = [];\n+\n+  test.beforeEach(async ({ page }, testInfo) => {\n+    consoleLogs = [];\n+\n+    // Capture all console messages\n+    page.on('console', (msg: ConsoleMessage) => {\n+      const logEntry = `[${msg.type().toUpperCase()}] ${new Date().toISOString()} ${msg.text()}`;\n+      consoleLogs.push(logEntry);\n+    });\n+\n+    // Capture page errors\n+    page.on('pageerror', (error) => {\n+      consoleLogs.push(`[PAGE ERROR] ${new Date().toISOString()} ${error.message}`);\n+    });\n+\n+    // Navigate to the game\n+    await page.goto('/');\n+\n+    // Wait for the game to be fully loaded\n+    await page.waitForSelector('#game-canvas', { state: 'visible' });\n+    await page.waitForSelector('.heat-game-build-menu button', { state: 'visible' });\n+\n+    // Verify we have all 7 build buttons before proceeding\n+    await expect(page.locator('.heat-game-build-menu button')).toHaveCount(7);\n+\n+    // Take initial screenshot\n+    await page.screenshot({\n+      path: `test-results/screenshots/${testInfo.title.replace(/\\s+/g, '-')}-01-initial.png`,\n+      fullPage: true\n+    });\n+  });\n+\n+  test.afterEach(async ({ page }, testInfo) => {\n+    // Save browser logs\n+    await saveLogs(testInfo, consoleLogs, 'browser-logs');\n+\n+    // Take final screenshot\n+    await page.screenshot({\n+      path: `test-results/screenshots/${testInfo.title.replace(/\\s+/g, '-')}-final.png`,\n+      fullPage: true\n+    });\n+  });\n+\n+  test('should load the game and display initial state', async ({ page }, testInfo) => {\n+    // Verify page title\n+    await expect(page).toHaveTitle('Heat Management Game');\n+\n+    // Verify header is visible\n+    await expect(page.locator('h1')).toContainText('Heat Management');\n+\n+    // Verify canvas is present\n+    const canvas = page.locator('#game-canvas');\n+    await expect(canvas).toBeVisible();\n+\n+    // Verify UI elements are present\n+    await expect(page.locator('.heat-game-money')).toBeVisible();\n+    await expect(page.locator('.heat-game-stats')).toBeVisible();\n+    await expect(page.locator('.heat-game-build-menu')).toBeVisible();\n+\n+    // Verify build menu has all structure buttons\n+    const buildButtons = page.locator('.heat-game-build-menu button');\n+    await expect(buildButtons).toHaveCount(7);\n+\n+    // Verify initial money display shows starting money ($500)\n+    const moneyDisplay = page.locator('.heat-game-money');\n+    await expect(moneyDisplay).toContainText('Money:');\n+\n+    await page.screenshot({\n+      path: `test-results/screenshots/${testInfo.title.replace(/\\s+/g, '-')}-02-verified-elements.png`,\n+      fullPage: true\n+    });\n+  });\n+\n+  test('should place a Fuel Rod on the grid', async ({ page }, testInfo) => {\n+    const canvas = page.locator('#game-canvas');\n+\n+    // Click on the FuelRod button to select it (enum value is 'fuel_rod')\n+    const fuelRodButton = page.getByRole('button', { name: /fuel_rod/i });\n+    await expect(fuelRodButton).toBeVisible();\n+    await fuelRodButton.click();\n+\n+    await page.screenshot({\n+      path: `test-results/screenshots/${testInfo.title.replace(/\\s+/g, '-')}-02-fuel-rod-selected.png`,\n+      fullPage: true\n+    });\n+\n+    // Click on the canvas at cell (5, 5) to place a Fuel Rod\n+    const clickPos = getCellClickPosition(5, 5);\n+    await canvas.click({ position: clickPos });\n+\n+    // Wait briefly for the game to process\n+    await page.waitForTimeout(100);\n+\n+    await page.screenshot({\n+      path: `test-results/screenshots/${testInfo.title.replace(/\\s+/g, '-')}-03-fuel-rod-placed.png`,\n+      fullPage: true\n+    });\n+\n+    // Verify money decreased (FuelRod costs $100, starting money is $500)\n+    const moneyDisplay = page.locator('.heat-game-money');\n+    await expect(moneyDisplay).toContainText('400');\n+  });\n+\n+  test('should place multiple structures and observe heat dynamics', async ({ page }, testInfo) => {\n+    const canvas = page.locator('#game-canvas');\n+\n+    // Place a Fuel Rod at (7, 7)\n+    await page.getByRole('button', { name: /fuel_rod/i }).click();\n+    await canvas.click({ position: getCellClickPosition(7, 7) });\n+\n+    // Place a Ventilator next to it at (6, 7) for cooling\n+    await page.getByRole('button', { name: /ventilator/i }).click();\n+    await canvas.click({ position: getCellClickPosition(6, 7) });\n+\n+    // Place a Turbine at (8, 7) to convert heat to power\n+    await page.getByRole('button', { name: /turbine/i }).click();\n+    await canvas.click({ position: getCellClickPosition(8, 7) });\n+\n+    // Place a Substation at (9, 7) to sell power\n+    await page.getByRole('button', { name: /substation/i }).click();\n+    await canvas.click({ position: getCellClickPosition(9, 7) });\n+\n+    await page.screenshot({\n+      path: `test-results/screenshots/${testInfo.title.replace(/\\s+/g, '-')}-02-structures-placed.png`,\n+      fullPage: true\n+    });\n+\n+    // Wait briefly for game ticks\n+    await page.waitForTimeout(500);\n+\n+    await page.screenshot({\n+      path: `test-results/screenshots/${testInfo.title.replace(/\\s+/g, '-')}-03-after-ticks.png`,\n+      fullPage: true\n+    });\n+\n+    // Verify stats are visible\n+    const statsDisplay = page.locator('.heat-game-stats');\n+    await expect(statsDisplay).toBeVisible();\n+  });\n+\n+  test('should demolish a structure with right-click', async ({ page }, testInfo) => {\n+    const canvas = page.locator('#game-canvas');\n+\n+    // Place a Ventilator (cheaper to test)\n+    await page.getByRole('button', { name: /ventilator/i }).click();\n+    await canvas.click({ position: getCellClickPosition(3, 3) });\n+\n+    // Check money after placing ($500 - $50 = $450)\n+    const moneyDisplay = page.locator('.heat-game-money');\n+    await expect(moneyDisplay).toContainText('450');\n+\n+    await page.screenshot({\n+      path: `test-results/screenshots/${testInfo.title.replace(/\\s+/g, '-')}-02-before-demolish.png`,\n+      fullPage: true\n+    });\n+\n+    // Right-click to demolish\n+    await canvas.click({ position: getCellClickPosition(3, 3), button: 'right' });\n+\n+    await page.screenshot({\n+      path: `test-results/screenshots/${testInfo.title.replace(/\\s+/g, '-')}-03-after-demolish.png`,\n+      fullPage: true\n+    });\n+\n+    // Money should stay at 450 (no refund)\n+    await expect(moneyDisplay).toContainText('450');\n+  });\n+\n+  test('should build a power generation setup', async ({ page }, testInfo) => {\n+    const canvas = page.locator('#game-canvas');\n+\n+    // Build a small power plant setup\n+    const structures = [\n+      { type: /ventilator/i, x: 5, y: 7 },\n+      { type: /fuel_rod/i, x: 6, y: 7 },\n+      { type: /turbine/i, x: 7, y: 7 },\n+      { type: /substation/i, x: 8, y: 7 },\n+    ];\n+\n+    for (const s of structures) {\n+      await page.getByRole('button', { name: s.type }).click();\n+      await canvas.click({ position: getCellClickPosition(s.x, s.y) });\n+    }\n+\n+    await page.screenshot({\n+      path: `test-results/screenshots/${testInfo.title.replace(/\\s+/g, '-')}-02-power-plant-built.png`,\n+      fullPage: true\n+    });\n+\n+    // Let the simulation run briefly\n+    await page.waitForTimeout(1000);\n+\n+    await page.screenshot({\n+      path: `test-results/screenshots/${testInfo.title.replace(/\\s+/g, '-')}-03-after-simulation.png`,\n+      fullPage: true\n+    });\n+\n+    // Verify stats are visible and updating\n+    const statsDisplay = page.locator('.heat-game-stats');\n+    const statsText = await statsDisplay.textContent();\n+    consoleLogs.push(`[TEST] Stats after simulation: ${statsText}`);\n+\n+    await expect(statsDisplay).toBeVisible();\n+  });\n+\n+  test('should show heat buildup with clustered fuel rods', async ({ page }, testInfo) => {\n+    const canvas = page.locator('#game-canvas');\n+\n+    // Build multiple fuel rods close together without cooling\n+    const fuelRodPositions = [\n+      { x: 7, y: 7 },\n+      { x: 8, y: 7 },\n+      { x: 7, y: 8 },\n+      { x: 8, y: 8 },\n+    ];\n+\n+    await page.getByRole('button', { name: /fuel_rod/i }).click();\n+\n+    for (const pos of fuelRodPositions) {\n+      await canvas.click({ position: getCellClickPosition(pos.x, pos.y) });\n+    }\n+\n+    await page.screenshot({\n+      path: `test-results/screenshots/${testInfo.title.replace(/\\s+/g, '-')}-02-fuel-rods-clustered.png`,\n+      fullPage: true\n+    });\n+\n+    // Wait briefly to observe heat buildup\n+    await page.waitForTimeout(1000);\n+\n+    const statsDisplay = page.locator('.heat-game-stats');\n+    const statsText = await statsDisplay.textContent();\n+    consoleLogs.push(`[TEST] Stats with heat buildup: ${statsText}`);\n+\n+    await page.screenshot({\n+      path: `test-results/screenshots/${testInfo.title.replace(/\\s+/g, '-')}-03-heat-building.png`,\n+      fullPage: true\n+    });\n+\n+    // Verify the game is still running\n+    await expect(statsDisplay).toBeVisible();\n+  });\n+\n+  test('should not allow building without sufficient money', async ({ page }, testInfo) => {\n+    const canvas = page.locator('#game-canvas');\n+\n+    // Substation costs $250, starting with $500\n+    await page.getByRole('button', { name: /substation/i }).click();\n+\n+    // Build 2 substations ($500 total)\n+    await canvas.click({ position: getCellClickPosition(1, 1) });\n+    await canvas.click({ position: getCellClickPosition(2, 1) });\n+\n+    await page.screenshot({\n+      path: `test-results/screenshots/${testInfo.title.replace(/\\s+/g, '-')}-02-spent-all-money.png`,\n+      fullPage: true\n+    });\n+\n+    // Verify money is 0\n+    const moneyDisplay = page.locator('.heat-game-money');\n+    await expect(moneyDisplay).toContainText('0');\n+\n+    // Try to build another structure - should fail silently\n+    await canvas.click({ position: getCellClickPosition(3, 1) });\n+\n+    await page.screenshot({\n+      path: `test-results/screenshots/${testInfo.title.replace(/\\s+/g, '-')}-03-cannot-build.png`,\n+      fullPage: true\n+    });\n+\n+    // Money should still be 0\n+    await expect(moneyDisplay).toContainText('0');\n+  });\n+\n+  test('should handle rapid clicking on the grid', async ({ page }, testInfo) => {\n+    const canvas = page.locator('#game-canvas');\n+\n+    // Select a cheaper structure\n+    await page.getByRole('button', { name: /insulation_plate/i }).click();\n+\n+    // Rapidly click multiple cells (limited to fit budget)\n+    const clicks = [];\n+    for (let x = 0; x < 4; x++) {\n+      for (let y = 0; y < 4; y++) {\n+        clicks.push(getCellClickPosition(x, y));\n+      }\n+    }\n+\n+    // Click rapidly\n+    for (const pos of clicks) {\n+      await canvas.click({ position: pos, delay: 5 });\n+    }\n+\n+    await page.screenshot({\n+      path: `test-results/screenshots/${testInfo.title.replace(/\\s+/g, '-')}-02-rapid-clicks-result.png`,\n+      fullPage: true\n+    });\n+\n+    // Verify the game is still responsive\n+    const statsDisplay = page.locator('.heat-game-stats');\n+    await expect(statsDisplay).toBeVisible();\n+  });\n+});\ndiff --git a/package-lock.json b/package-lock.json\nindex e9faf23..2c13db1 100644\n--- a/package-lock.json\n+++ b/package-lock.json\n@@ -9,6 +9,7 @@\n       \"version\": \"1.0.0\",\n       \"license\": \"AGPL-3.0\",\n       \"devDependencies\": {\n+        \"@playwright/test\": \"^1.58.0\",\n         \"concurrently\": \"^8.2.0\",\n         \"typescript\": \"^5.3.0\",\n         \"vitest\": \"^1.0.0\"\n@@ -435,6 +436,22 @@\n       \"dev\": true,\n       \"license\": \"MIT\"\n     },\n+    \"node_modules/@playwright/test\": {\n+      \"version\": \"1.58.0\",\n+      \"resolved\": \"https://registry.npmjs.org/@playwright/test/-/test-1.58.0.tgz\",\n+      \"integrity\": \"sha512-fWza+Lpbj6SkQKCrU6si4iu+fD2dD3gxNHFhUPxsfXBPhnv3rRSQVd0NtBUT9Z/RhF/boCBcuUaMUSTRTopjZg==\",\n+      \"dev\": true,\n+      \"license\": \"Apache-2.0\",\n+      \"dependencies\": {\n+        \"playwright\": \"1.58.0\"\n+      },\n+      \"bin\": {\n+        \"playwright\": \"cli.js\"\n+      },\n+      \"engines\": {\n+        \"node\": \">=18\"\n+      }\n+    },\n     \"node_modules/@rollup/rollup-android-arm-eabi\": {\n       \"version\": \"4.57.1\",\n       \"resolved\": \"https://registry.npmjs.org/@rollup/rollup-android-arm-eabi/-/rollup-android-arm-eabi-4.57.1.tgz\",\n@@ -1569,6 +1586,53 @@\n       \"dev\": true,\n       \"license\": \"MIT\"\n     },\n+    \"node_modules/playwright\": {\n+      \"version\": \"1.58.0\",\n+      \"resolved\": \"https://registry.npmjs.org/playwright/-/playwright-1.58.0.tgz\",\n+      \"integrity\": \"sha512-2SVA0sbPktiIY/MCOPX8e86ehA/e+tDNq+e5Y8qjKYti2Z/JG7xnronT/TXTIkKbYGWlCbuucZ6dziEgkoEjQQ==\",\n+      \"dev\": true,\n+      \"license\": \"Apache-2.0\",\n+      \"dependencies\": {\n+        \"playwright-core\": \"1.58.0\"\n+      },\n+      \"bin\": {\n+        \"playwright\": \"cli.js\"\n+      },\n+      \"engines\": {\n+        \"node\": \">=18\"\n+      },\n+      \"optionalDependencies\": {\n+        \"fsevents\": \"2.3.2\"\n+      }\n+    },\n+    \"node_modules/playwright-core\": {\n+      \"version\": \"1.58.0\",\n+      \"resolved\": \"https://registry.npmjs.org/playwright-core/-/playwright-core-1.58.0.tgz\",\n+      \"integrity\": \"sha512-aaoB1RWrdNi3//rOeKuMiS65UCcgOVljU46At6eFcOFPFHWtd2weHRRow6z/n+Lec0Lvu0k9ZPKJSjPugikirw==\",\n+      \"dev\": true,\n+      \"license\": \"Apache-2.0\",\n+      \"bin\": {\n+        \"playwright-core\": \"cli.js\"\n+      },\n+      \"engines\": {\n+        \"node\": \">=18\"\n+      }\n+    },\n+    \"node_modules/playwright/node_modules/fsevents\": {\n+      \"version\": \"2.3.2\",\n+      \"resolved\": \"https://registry.npmjs.org/fsevents/-/fsevents-2.3.2.tgz\",\n+      \"integrity\": \"sha512-xiqMQR4xAeHTuB9uWm+fFRcIOgKBMiOBP+eXiyT7jsgVCq1bkVygt00oASowB7EdtpOHaaPgKt812P9ab+DDKA==\",\n+      \"dev\": true,\n+      \"hasInstallScript\": true,\n+      \"license\": \"MIT\",\n+      \"optional\": true,\n+      \"os\": [\n+        \"darwin\"\n+      ],\n+      \"engines\": {\n+        \"node\": \"^8.16.0 || ^10.6.0 || >=11.0.0\"\n+      }\n+    },\n     \"node_modules/postcss\": {\n       \"version\": \"8.5.6\",\n       \"resolved\": \"https://registry.npmjs.org/postcss/-/postcss-8.5.6.tgz\",\ndiff --git a/package.json b/package.json\nindex 6633109..c2b642a 100644\n--- a/package.json\n+++ b/package.json\n@@ -10,11 +10,16 @@\n     \"serve\": \"npm run build && npx serve deploy\",\n     \"dev\": \"concurrently \\\"tsc --watch\\\" \\\"npx serve deploy\\\"\",\n     \"test\": \"vitest run\",\n-    \"test:watch\": \"vitest\"\n+    \"test:watch\": \"vitest\",\n+    \"test:e2e\": \"playwright test\",\n+    \"test:e2e:headed\": \"playwright test --headed\",\n+    \"test:e2e:debug\": \"playwright test --debug\",\n+    \"test:e2e:report\": \"playwright show-report\"\n   },\n   \"devDependencies\": {\n-    \"typescript\": \"^5.3.0\",\n+    \"@playwright/test\": \"^1.58.0\",\n     \"concurrently\": \"^8.2.0\",\n+    \"typescript\": \"^5.3.0\",\n     \"vitest\": \"^1.0.0\"\n   },\n   \"license\": \"AGPL-3.0\"\ndiff --git a/playwright.config.ts b/playwright.config.ts\nnew file mode 100644\nindex 0000000..2da0be8\n--- /dev/null\n+++ b/playwright.config.ts\n@@ -0,0 +1,76 @@\n+import { defineConfig, devices } from '@playwright/test';\n+\n+/**\n+ * Playwright configuration for e2e tests\n+ * @see https://playwright.dev/docs/test-configuration\n+ */\n+export default defineConfig({\n+  testDir: './e2e',\n+\n+  /* Run tests in files in parallel */\n+  fullyParallel: true,\n+\n+  /* Fail the build on CI if you accidentally left test.only in the source code */\n+  forbidOnly: !!process.env.CI,\n+\n+  /* Retry on CI only */\n+  retries: process.env.CI ? 2 : 0,\n+\n+  /* Opt out of parallel tests on CI */\n+  workers: process.env.CI ? 1 : undefined,\n+\n+  /* Reporter to use */\n+  reporter: [\n+    ['html', { outputFolder: 'playwright-report' }],\n+    ['list'],\n+    ['json', { outputFile: 'test-results/results.json' }]\n+  ],\n+\n+  /* Shared settings for all the projects below */\n+  use: {\n+    /* Base URL to use in actions like `await page.goto('/')` */\n+    baseURL: 'http://localhost:3000',\n+\n+    /* Collect trace when retrying the failed test */\n+    trace: 'on-first-retry',\n+\n+    /* Capture screenshot on failure */\n+    screenshot: 'on',\n+\n+    /* Record video on failure */\n+    video: 'on-first-retry',\n+  },\n+\n+  /* Configure projects for major browsers */\n+  projects: [\n+    {\n+      name: 'chromium',\n+      use: {\n+        ...devices['Desktop Chrome'],\n+        // Capture console logs\n+        launchOptions: {\n+          args: ['--enable-logging', '--v=1']\n+        }\n+      },\n+    },\n+  ],\n+\n+  /* Run your local dev server before starting the tests */\n+  webServer: {\n+    command: 'npm run serve',\n+    url: 'http://localhost:3000',\n+    reuseExistingServer: !process.env.CI,\n+    timeout: 120 * 1000,\n+  },\n+\n+  /* Output directory for test artifacts */\n+  outputDir: 'test-results/',\n+\n+  /* Global timeout for each test */\n+  timeout: 30000,\n+\n+  /* Expect timeout */\n+  expect: {\n+    timeout: 5000,\n+  },\n+});\ndiff --git a/src/app.ts b/src/app.ts\nindex cb0f6e2..234e0e1 100644\n--- a/src/app.ts\n+++ b/src/app.ts\n@@ -88,17 +88,62 @@ if ('serviceWorker' in navigator) {\n         updatePWAStatus('Registration failed');\n       });\n \n-    // Reload page when new SW takes over\n-    let refreshing = false;\n+    // When new SW takes over, show reload banner instead of auto-reloading\n     navigator.serviceWorker.addEventListener('controllerchange', () => {\n-      if (refreshing) return;\n-      refreshing = true;\n-      console.log('SW: Controller changed, reloading...');\n-      window.location.reload();\n+      console.log('SW: Controller changed, showing reload banner');\n+      showReloadBanner();\n     });\n   });\n }\n \n+// Show a banner prompting user to reload for updates\n+function showReloadBanner(): void {\n+  // Check if banner already exists\n+  if (document.getElementById('reload-banner')) return;\n+\n+  const banner = document.createElement('div');\n+  banner.id = 'reload-banner';\n+  banner.style.cssText = `\n+    position: fixed;\n+    top: 0;\n+    left: 0;\n+    right: 0;\n+    background: #4a90d9;\n+    color: white;\n+    padding: 12px 20px;\n+    display: flex;\n+    justify-content: space-between;\n+    align-items: center;\n+    z-index: 10000;\n+    font-family: system-ui, sans-serif;\n+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);\n+  `;\n+\n+  const message = document.createElement('span');\n+  message.textContent = 'A new version is available!';\n+\n+  const reloadButton = document.createElement('button');\n+  reloadButton.textContent = 'Reload to update';\n+  reloadButton.style.cssText = `\n+    background: white;\n+    color: #4a90d9;\n+    border: none;\n+    padding: 8px 16px;\n+    border-radius: 4px;\n+    cursor: pointer;\n+    font-weight: bold;\n+  `;\n+  reloadButton.addEventListener('click', () => {\n+    window.location.reload();\n+  });\n+\n+  banner.appendChild(message);\n+  banner.appendChild(reloadButton);\n+  document.body.prepend(banner);\n+\n+  updatePWAStatus('Reload to update');\n+}\n+\n // Update button click handler\n if (updateButton) {\n   updateButton.addEventListener('click', handleUpdateClick);",
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "/home/runner/work/claudetest123/claudetest123/test-results",
+        "repeatEach": 1,
+        "retries": 2,
+        "metadata": {
+          "ci": {
+            "commitHref": "https://github.com/bjuergens/claudetest123/commit/29b8f800dbf3ab6f2ad35c11a372e44ab336573a",
+            "commitHash": "29b8f800dbf3ab6f2ad35c11a372e44ab336573a",
+            "prHref": "https://github.com/bjuergens/claudetest123/pull/7",
+            "prTitle": "Add end-to-end tests with Playwright",
+            "prBaseHash": "91952389cfb3c0a5764880dfdcb2d282b876630b",
+            "buildHref": "https://github.com/bjuergens/claudetest123/actions/runs/21524824229"
+          },
+          "gitCommit": {
+            "shortHash": "29b8f80",
+            "hash": "29b8f800dbf3ab6f2ad35c11a372e44ab336573a",
+            "subject": "Merge 4617888eb152bfe27ee5b8dda3942901f76f7c3e into 91952389cfb3c0a5764880dfdcb2d282b876630b",
+            "body": "Merge 4617888eb152bfe27ee5b8dda3942901f76f7c3e into 91952389cfb3c0a5764880dfdcb2d282b876630b\n",
+            "author": {
+              "name": "Björn Jürgens",
+              "email": "4362465+bjuergens@users.noreply.github.com",
+              "time": 1769794459000
+            },
+            "committer": {
+              "name": "GitHub",
+              "email": "noreply@github.com",
+              "time": 1769794459000
+            },
+            "branch": "HEAD"
+          },
+          "gitDiff": "diff --git a/.github/workflows/e2e-tests.yml b/.github/workflows/e2e-tests.yml\nnew file mode 100644\nindex 0000000..00c5513\n--- /dev/null\n+++ b/.github/workflows/e2e-tests.yml\n@@ -0,0 +1,182 @@\n+name: E2E Tests\n+\n+on:\n+  pull_request:\n+    branches:\n+      - main\n+      - master\n+  push:\n+    branches:\n+      - main\n+      - master\n+  workflow_dispatch: # Allow manual trigger\n+\n+# Allow the workflow to push to test-results branch\n+permissions:\n+  contents: write\n+\n+jobs:\n+  e2e:\n+    name: Run E2E Tests\n+    runs-on: ubuntu-latest\n+    timeout-minutes: 5\n+\n+    steps:\n+      - name: Checkout\n+        uses: actions/checkout@v4\n+\n+      - name: Setup Node.js\n+        uses: actions/setup-node@v4\n+        with:\n+          node-version: '20'\n+          cache: 'npm'\n+\n+      - name: Install dependencies\n+        run: npm ci\n+\n+      - name: Build TypeScript\n+        run: npm run build\n+\n+      - name: Install Playwright Browsers\n+        run: npx playwright install --with-deps chromium\n+\n+      - name: Run E2E tests\n+        id: e2e-tests\n+        run: npm run test:e2e\n+        timeout-minutes: 2\n+        continue-on-error: true\n+\n+      - name: Create test summary\n+        if: always()\n+        run: |\n+          # Create a summary JSON file with metadata\n+          mkdir -p test-results\n+          cat > test-results/summary.json << EOF\n+          {\n+            \"run_id\": \"${{ github.run_id }}\",\n+            \"run_number\": \"${{ github.run_number }}\",\n+            \"sha\": \"${{ github.sha }}\",\n+            \"ref\": \"${{ github.ref }}\",\n+            \"event\": \"${{ github.event_name }}\",\n+            \"actor\": \"${{ github.actor }}\",\n+            \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\n+            \"test_outcome\": \"${{ steps.e2e-tests.outcome }}\",\n+            \"repository\": \"${{ github.repository }}\"\n+          }\n+          EOF\n+\n+      - name: Upload test results artifact\n+        uses: actions/upload-artifact@v4\n+        if: always()\n+        with:\n+          name: e2e-test-results\n+          path: |\n+            test-results/\n+            playwright-report/\n+          retention-days: 30\n+\n+      - name: Publish test results to branch\n+        if: always()\n+        run: |\n+          # Configure git\n+          git config --global user.name \"github-actions[bot]\"\n+          git config --global user.email \"github-actions[bot]@users.noreply.github.com\"\n+\n+          # Create a unique directory name for this run\n+          RUN_DIR=\"runs/${{ github.run_id }}\"\n+\n+          # Save test results to a temporary location\n+          mkdir -p /tmp/test-output\n+          cp -r test-results /tmp/test-output/ 2>/dev/null || true\n+          cp -r playwright-report /tmp/test-output/ 2>/dev/null || true\n+\n+          # Fetch or create the test-results branch\n+          git fetch origin test-results:test-results 2>/dev/null || true\n+\n+          # Check if branch exists\n+          if git show-ref --verify --quiet refs/heads/test-results; then\n+            git checkout test-results\n+          else\n+            # Create orphan branch for test results\n+            git checkout --orphan test-results\n+            git rm -rf . 2>/dev/null || true\n+            echo \"# E2E Test Results\" > README.md\n+            echo \"\" >> README.md\n+            echo \"This branch contains e2e test results published by GitHub Actions.\" >> README.md\n+            echo \"\" >> README.md\n+            echo \"## Accessing Results\" >> README.md\n+            echo \"\" >> README.md\n+            echo \"Results are organized by run ID under the \\`runs/\\` directory.\" >> README.md\n+            echo \"\" >> README.md\n+            echo \"Raw content URLs:\" >> README.md\n+            echo \"\\`\\`\\`\" >> README.md\n+            echo \"https://raw.githubusercontent.com/${{ github.repository }}/test-results/runs/<run_id>/test-results/summary.json\" >> README.md\n+            echo \"https://raw.githubusercontent.com/${{ github.repository }}/test-results/runs/<run_id>/test-results/screenshots/<name>.png\" >> README.md\n+            echo \"https://raw.githubusercontent.com/${{ github.repository }}/test-results/runs/<run_id>/test-results/logs/<name>.log\" >> README.md\n+            echo \"\\`\\`\\`\" >> README.md\n+            git add README.md\n+          fi\n+\n+          # Create directory for this run\n+          mkdir -p \"$RUN_DIR\"\n+\n+          # Copy test results\n+          cp -r /tmp/test-output/* \"$RUN_DIR/\" 2>/dev/null || true\n+\n+          # Update latest symlink info\n+          echo \"${{ github.run_id }}\" > latest-run-id.txt\n+\n+          # Create an index of recent runs\n+          cat > \"$RUN_DIR/index.json\" << EOF\n+          {\n+            \"run_id\": \"${{ github.run_id }}\",\n+            \"run_number\": \"${{ github.run_number }}\",\n+            \"sha\": \"${{ github.sha }}\",\n+            \"ref\": \"${{ github.ref }}\",\n+            \"event\": \"${{ github.event_name }}\",\n+            \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\n+            \"test_outcome\": \"${{ steps.e2e-tests.outcome }}\",\n+            \"files\": {\n+              \"summary\": \"test-results/summary.json\",\n+              \"results_json\": \"test-results/results.json\",\n+              \"screenshots_dir\": \"test-results/screenshots/\",\n+              \"logs_dir\": \"test-results/logs/\",\n+              \"playwright_report\": \"playwright-report/\"\n+            },\n+            \"raw_base_url\": \"https://raw.githubusercontent.com/${{ github.repository }}/test-results/$RUN_DIR\"\n+          }\n+          EOF\n+\n+          # List all files for debugging\n+          echo \"Files in $RUN_DIR:\"\n+          find \"$RUN_DIR\" -type f 2>/dev/null || echo \"No files found\"\n+\n+          # Add and commit\n+          git add -A\n+          git commit -m \"E2E test results for run #${{ github.run_number }} (${{ github.sha }})\" || echo \"No changes to commit\"\n+\n+          # Push to test-results branch\n+          git push origin test-results --force\n+\n+      - name: Output results location\n+        if: always()\n+        run: |\n+          echo \"## E2E Test Results\" >> $GITHUB_STEP_SUMMARY\n+          echo \"\" >> $GITHUB_STEP_SUMMARY\n+          echo \"Test outcome: **${{ steps.e2e-tests.outcome }}**\" >> $GITHUB_STEP_SUMMARY\n+          echo \"\" >> $GITHUB_STEP_SUMMARY\n+          echo \"### Raw Content URLs\" >> $GITHUB_STEP_SUMMARY\n+          echo \"\" >> $GITHUB_STEP_SUMMARY\n+          echo \"Base URL: \\`https://raw.githubusercontent.com/${{ github.repository }}/test-results/runs/${{ github.run_id }}/\\`\" >> $GITHUB_STEP_SUMMARY\n+          echo \"\" >> $GITHUB_STEP_SUMMARY\n+          echo \"- **Summary**: https://raw.githubusercontent.com/${{ github.repository }}/test-results/runs/${{ github.run_id }}/test-results/summary.json\" >> $GITHUB_STEP_SUMMARY\n+          echo \"- **Test Results JSON**: https://raw.githubusercontent.com/${{ github.repository }}/test-results/runs/${{ github.run_id }}/test-results/results.json\" >> $GITHUB_STEP_SUMMARY\n+          echo \"- **Run Index**: https://raw.githubusercontent.com/${{ github.repository }}/test-results/runs/${{ github.run_id }}/index.json\" >> $GITHUB_STEP_SUMMARY\n+          echo \"\" >> $GITHUB_STEP_SUMMARY\n+          echo \"### Latest Run\" >> $GITHUB_STEP_SUMMARY\n+          echo \"\" >> $GITHUB_STEP_SUMMARY\n+          echo \"https://raw.githubusercontent.com/${{ github.repository }}/test-results/latest-run-id.txt\" >> $GITHUB_STEP_SUMMARY\n+\n+      - name: Fail if tests failed\n+        if: steps.e2e-tests.outcome == 'failure'\n+        run: exit 1\ndiff --git a/.gitignore b/.gitignore\nindex 3b4f4b9..26510b3 100644\n--- a/.gitignore\n+++ b/.gitignore\n@@ -16,3 +16,8 @@ Thumbs.db\n # Logs\n *.log\n npm-debug.log*\n+\n+# Playwright test output\n+test-results/\n+playwright-report/\n+playwright/.cache/\ndiff --git a/deploy/sw.js b/deploy/sw.js\nindex 1e7493d..73dc1a0 100644\n--- a/deploy/sw.js\n+++ b/deploy/sw.js\n@@ -67,7 +67,8 @@ self.addEventListener('activate', (event) => {\n       );\n     })\n   );\n-  self.clients.claim();\n+  // Don't call clients.claim() - let the page control when to use the new SW\n+  // This prevents automatic reload on first install\n });\n \n // Listen for skip waiting message from the app\ndiff --git a/e2e/heat-game.spec.ts b/e2e/heat-game.spec.ts\nnew file mode 100644\nindex 0000000..f1d6bf7\n--- /dev/null\n+++ b/e2e/heat-game.spec.ts\n@@ -0,0 +1,344 @@\n+import { test, expect, Page, ConsoleMessage } from '@playwright/test';\n+import * as fs from 'fs';\n+import * as path from 'path';\n+\n+// Game constants (matching the app.ts renderer config)\n+const GRID_SIZE = 16;\n+const CELL_SIZE = 28;  // Must match app.ts cellSize\n+const GRID_PADDING = 8; // Must match app.ts gridPadding\n+\n+/**\n+ * Calculate canvas click coordinates for a grid cell\n+ */\n+function getCellClickPosition(cellX: number, cellY: number): { x: number; y: number } {\n+  return {\n+    x: GRID_PADDING + cellX * CELL_SIZE + CELL_SIZE / 2,\n+    y: GRID_PADDING + cellY * CELL_SIZE + CELL_SIZE / 2,\n+  };\n+}\n+\n+/**\n+ * Save logs to a file in the test results directory\n+ */\n+async function saveLogs(testInfo: any, logs: string[], filename: string) {\n+  const logsDir = path.join('test-results', 'logs');\n+  if (!fs.existsSync(logsDir)) {\n+    fs.mkdirSync(logsDir, { recursive: true });\n+  }\n+\n+  const logFile = path.join(logsDir, `${testInfo.title.replace(/\\s+/g, '-')}-${filename}.log`);\n+  fs.writeFileSync(logFile, logs.join('\\n'));\n+  await testInfo.attach(filename, { path: logFile, contentType: 'text/plain' });\n+}\n+\n+// Ensure screenshots directory exists before tests\n+const screenshotsDir = 'test-results/screenshots';\n+if (!fs.existsSync(screenshotsDir)) {\n+  fs.mkdirSync(screenshotsDir, { recursive: true });\n+}\n+\n+test.describe('Heat Game E2E Tests', () => {\n+  let consoleLogs: string[] = [];\n+\n+  test.beforeEach(async ({ page }, testInfo) => {\n+    consoleLogs = [];\n+\n+    // Capture all console messages\n+    page.on('console', (msg: ConsoleMessage) => {\n+      const logEntry = `[${msg.type().toUpperCase()}] ${new Date().toISOString()} ${msg.text()}`;\n+      consoleLogs.push(logEntry);\n+    });\n+\n+    // Capture page errors\n+    page.on('pageerror', (error) => {\n+      consoleLogs.push(`[PAGE ERROR] ${new Date().toISOString()} ${error.message}`);\n+    });\n+\n+    // Navigate to the game\n+    await page.goto('/');\n+\n+    // Wait for the game to be fully loaded\n+    await page.waitForSelector('#game-canvas', { state: 'visible' });\n+    await page.waitForSelector('.heat-game-build-menu button', { state: 'visible' });\n+\n+    // Verify we have all 7 build buttons before proceeding\n+    await expect(page.locator('.heat-game-build-menu button')).toHaveCount(7);\n+\n+    // Take initial screenshot\n+    await page.screenshot({\n+      path: `test-results/screenshots/${testInfo.title.replace(/\\s+/g, '-')}-01-initial.png`,\n+      fullPage: true\n+    });\n+  });\n+\n+  test.afterEach(async ({ page }, testInfo) => {\n+    // Save browser logs\n+    await saveLogs(testInfo, consoleLogs, 'browser-logs');\n+\n+    // Take final screenshot\n+    await page.screenshot({\n+      path: `test-results/screenshots/${testInfo.title.replace(/\\s+/g, '-')}-final.png`,\n+      fullPage: true\n+    });\n+  });\n+\n+  test('should load the game and display initial state', async ({ page }, testInfo) => {\n+    // Verify page title\n+    await expect(page).toHaveTitle('Heat Management Game');\n+\n+    // Verify header is visible\n+    await expect(page.locator('h1')).toContainText('Heat Management');\n+\n+    // Verify canvas is present\n+    const canvas = page.locator('#game-canvas');\n+    await expect(canvas).toBeVisible();\n+\n+    // Verify UI elements are present\n+    await expect(page.locator('.heat-game-money')).toBeVisible();\n+    await expect(page.locator('.heat-game-stats')).toBeVisible();\n+    await expect(page.locator('.heat-game-build-menu')).toBeVisible();\n+\n+    // Verify build menu has all structure buttons\n+    const buildButtons = page.locator('.heat-game-build-menu button');\n+    await expect(buildButtons).toHaveCount(7);\n+\n+    // Verify initial money display shows starting money ($500)\n+    const moneyDisplay = page.locator('.heat-game-money');\n+    await expect(moneyDisplay).toContainText('Money:');\n+\n+    await page.screenshot({\n+      path: `test-results/screenshots/${testInfo.title.replace(/\\s+/g, '-')}-02-verified-elements.png`,\n+      fullPage: true\n+    });\n+  });\n+\n+  test('should place a Fuel Rod on the grid', async ({ page }, testInfo) => {\n+    const canvas = page.locator('#game-canvas');\n+\n+    // Click on the FuelRod button to select it (enum value is 'fuel_rod')\n+    const fuelRodButton = page.getByRole('button', { name: /fuel_rod/i });\n+    await expect(fuelRodButton).toBeVisible();\n+    await fuelRodButton.click();\n+\n+    await page.screenshot({\n+      path: `test-results/screenshots/${testInfo.title.replace(/\\s+/g, '-')}-02-fuel-rod-selected.png`,\n+      fullPage: true\n+    });\n+\n+    // Click on the canvas at cell (5, 5) to place a Fuel Rod\n+    const clickPos = getCellClickPosition(5, 5);\n+    await canvas.click({ position: clickPos });\n+\n+    // Wait briefly for the game to process\n+    await page.waitForTimeout(100);\n+\n+    await page.screenshot({\n+      path: `test-results/screenshots/${testInfo.title.replace(/\\s+/g, '-')}-03-fuel-rod-placed.png`,\n+      fullPage: true\n+    });\n+\n+    // Verify money decreased (FuelRod costs $100, starting money is $500)\n+    const moneyDisplay = page.locator('.heat-game-money');\n+    await expect(moneyDisplay).toContainText('400');\n+  });\n+\n+  test('should place multiple structures and observe heat dynamics', async ({ page }, testInfo) => {\n+    const canvas = page.locator('#game-canvas');\n+\n+    // Place a Fuel Rod at (7, 7)\n+    await page.getByRole('button', { name: /fuel_rod/i }).click();\n+    await canvas.click({ position: getCellClickPosition(7, 7) });\n+\n+    // Place a Ventilator next to it at (6, 7) for cooling\n+    await page.getByRole('button', { name: /ventilator/i }).click();\n+    await canvas.click({ position: getCellClickPosition(6, 7) });\n+\n+    // Place a Turbine at (8, 7) to convert heat to power\n+    await page.getByRole('button', { name: /turbine/i }).click();\n+    await canvas.click({ position: getCellClickPosition(8, 7) });\n+\n+    // Place a Substation at (9, 7) to sell power\n+    await page.getByRole('button', { name: /substation/i }).click();\n+    await canvas.click({ position: getCellClickPosition(9, 7) });\n+\n+    await page.screenshot({\n+      path: `test-results/screenshots/${testInfo.title.replace(/\\s+/g, '-')}-02-structures-placed.png`,\n+      fullPage: true\n+    });\n+\n+    // Wait briefly for game ticks\n+    await page.waitForTimeout(500);\n+\n+    await page.screenshot({\n+      path: `test-results/screenshots/${testInfo.title.replace(/\\s+/g, '-')}-03-after-ticks.png`,\n+      fullPage: true\n+    });\n+\n+    // Verify stats are visible\n+    const statsDisplay = page.locator('.heat-game-stats');\n+    await expect(statsDisplay).toBeVisible();\n+  });\n+\n+  test('should demolish a structure with right-click', async ({ page }, testInfo) => {\n+    const canvas = page.locator('#game-canvas');\n+\n+    // Place a Ventilator (cheaper to test)\n+    await page.getByRole('button', { name: /ventilator/i }).click();\n+    await canvas.click({ position: getCellClickPosition(3, 3) });\n+\n+    // Check money after placing ($500 - $50 = $450)\n+    const moneyDisplay = page.locator('.heat-game-money');\n+    await expect(moneyDisplay).toContainText('450');\n+\n+    await page.screenshot({\n+      path: `test-results/screenshots/${testInfo.title.replace(/\\s+/g, '-')}-02-before-demolish.png`,\n+      fullPage: true\n+    });\n+\n+    // Right-click to demolish\n+    await canvas.click({ position: getCellClickPosition(3, 3), button: 'right' });\n+\n+    await page.screenshot({\n+      path: `test-results/screenshots/${testInfo.title.replace(/\\s+/g, '-')}-03-after-demolish.png`,\n+      fullPage: true\n+    });\n+\n+    // Money should stay at 450 (no refund)\n+    await expect(moneyDisplay).toContainText('450');\n+  });\n+\n+  test('should build a power generation setup', async ({ page }, testInfo) => {\n+    const canvas = page.locator('#game-canvas');\n+\n+    // Build a small power plant setup\n+    const structures = [\n+      { type: /ventilator/i, x: 5, y: 7 },\n+      { type: /fuel_rod/i, x: 6, y: 7 },\n+      { type: /turbine/i, x: 7, y: 7 },\n+      { type: /substation/i, x: 8, y: 7 },\n+    ];\n+\n+    for (const s of structures) {\n+      await page.getByRole('button', { name: s.type }).click();\n+      await canvas.click({ position: getCellClickPosition(s.x, s.y) });\n+    }\n+\n+    await page.screenshot({\n+      path: `test-results/screenshots/${testInfo.title.replace(/\\s+/g, '-')}-02-power-plant-built.png`,\n+      fullPage: true\n+    });\n+\n+    // Let the simulation run briefly\n+    await page.waitForTimeout(1000);\n+\n+    await page.screenshot({\n+      path: `test-results/screenshots/${testInfo.title.replace(/\\s+/g, '-')}-03-after-simulation.png`,\n+      fullPage: true\n+    });\n+\n+    // Verify stats are visible and updating\n+    const statsDisplay = page.locator('.heat-game-stats');\n+    const statsText = await statsDisplay.textContent();\n+    consoleLogs.push(`[TEST] Stats after simulation: ${statsText}`);\n+\n+    await expect(statsDisplay).toBeVisible();\n+  });\n+\n+  test('should show heat buildup with clustered fuel rods', async ({ page }, testInfo) => {\n+    const canvas = page.locator('#game-canvas');\n+\n+    // Build multiple fuel rods close together without cooling\n+    const fuelRodPositions = [\n+      { x: 7, y: 7 },\n+      { x: 8, y: 7 },\n+      { x: 7, y: 8 },\n+      { x: 8, y: 8 },\n+    ];\n+\n+    await page.getByRole('button', { name: /fuel_rod/i }).click();\n+\n+    for (const pos of fuelRodPositions) {\n+      await canvas.click({ position: getCellClickPosition(pos.x, pos.y) });\n+    }\n+\n+    await page.screenshot({\n+      path: `test-results/screenshots/${testInfo.title.replace(/\\s+/g, '-')}-02-fuel-rods-clustered.png`,\n+      fullPage: true\n+    });\n+\n+    // Wait briefly to observe heat buildup\n+    await page.waitForTimeout(1000);\n+\n+    const statsDisplay = page.locator('.heat-game-stats');\n+    const statsText = await statsDisplay.textContent();\n+    consoleLogs.push(`[TEST] Stats with heat buildup: ${statsText}`);\n+\n+    await page.screenshot({\n+      path: `test-results/screenshots/${testInfo.title.replace(/\\s+/g, '-')}-03-heat-building.png`,\n+      fullPage: true\n+    });\n+\n+    // Verify the game is still running\n+    await expect(statsDisplay).toBeVisible();\n+  });\n+\n+  test('should not allow building without sufficient money', async ({ page }, testInfo) => {\n+    const canvas = page.locator('#game-canvas');\n+\n+    // Substation costs $250, starting with $500\n+    await page.getByRole('button', { name: /substation/i }).click();\n+\n+    // Build 2 substations ($500 total)\n+    await canvas.click({ position: getCellClickPosition(1, 1) });\n+    await canvas.click({ position: getCellClickPosition(2, 1) });\n+\n+    await page.screenshot({\n+      path: `test-results/screenshots/${testInfo.title.replace(/\\s+/g, '-')}-02-spent-all-money.png`,\n+      fullPage: true\n+    });\n+\n+    // Verify money is 0\n+    const moneyDisplay = page.locator('.heat-game-money');\n+    await expect(moneyDisplay).toContainText('0');\n+\n+    // Try to build another structure - should fail silently\n+    await canvas.click({ position: getCellClickPosition(3, 1) });\n+\n+    await page.screenshot({\n+      path: `test-results/screenshots/${testInfo.title.replace(/\\s+/g, '-')}-03-cannot-build.png`,\n+      fullPage: true\n+    });\n+\n+    // Money should still be 0\n+    await expect(moneyDisplay).toContainText('0');\n+  });\n+\n+  test('should handle rapid clicking on the grid', async ({ page }, testInfo) => {\n+    const canvas = page.locator('#game-canvas');\n+\n+    // Select a cheaper structure\n+    await page.getByRole('button', { name: /insulation_plate/i }).click();\n+\n+    // Rapidly click multiple cells (limited to fit budget)\n+    const clicks = [];\n+    for (let x = 0; x < 4; x++) {\n+      for (let y = 0; y < 4; y++) {\n+        clicks.push(getCellClickPosition(x, y));\n+      }\n+    }\n+\n+    // Click rapidly\n+    for (const pos of clicks) {\n+      await canvas.click({ position: pos, delay: 5 });\n+    }\n+\n+    await page.screenshot({\n+      path: `test-results/screenshots/${testInfo.title.replace(/\\s+/g, '-')}-02-rapid-clicks-result.png`,\n+      fullPage: true\n+    });\n+\n+    // Verify the game is still responsive\n+    const statsDisplay = page.locator('.heat-game-stats');\n+    await expect(statsDisplay).toBeVisible();\n+  });\n+});\ndiff --git a/package-lock.json b/package-lock.json\nindex e9faf23..2c13db1 100644\n--- a/package-lock.json\n+++ b/package-lock.json\n@@ -9,6 +9,7 @@\n       \"version\": \"1.0.0\",\n       \"license\": \"AGPL-3.0\",\n       \"devDependencies\": {\n+        \"@playwright/test\": \"^1.58.0\",\n         \"concurrently\": \"^8.2.0\",\n         \"typescript\": \"^5.3.0\",\n         \"vitest\": \"^1.0.0\"\n@@ -435,6 +436,22 @@\n       \"dev\": true,\n       \"license\": \"MIT\"\n     },\n+    \"node_modules/@playwright/test\": {\n+      \"version\": \"1.58.0\",\n+      \"resolved\": \"https://registry.npmjs.org/@playwright/test/-/test-1.58.0.tgz\",\n+      \"integrity\": \"sha512-fWza+Lpbj6SkQKCrU6si4iu+fD2dD3gxNHFhUPxsfXBPhnv3rRSQVd0NtBUT9Z/RhF/boCBcuUaMUSTRTopjZg==\",\n+      \"dev\": true,\n+      \"license\": \"Apache-2.0\",\n+      \"dependencies\": {\n+        \"playwright\": \"1.58.0\"\n+      },\n+      \"bin\": {\n+        \"playwright\": \"cli.js\"\n+      },\n+      \"engines\": {\n+        \"node\": \">=18\"\n+      }\n+    },\n     \"node_modules/@rollup/rollup-android-arm-eabi\": {\n       \"version\": \"4.57.1\",\n       \"resolved\": \"https://registry.npmjs.org/@rollup/rollup-android-arm-eabi/-/rollup-android-arm-eabi-4.57.1.tgz\",\n@@ -1569,6 +1586,53 @@\n       \"dev\": true,\n       \"license\": \"MIT\"\n     },\n+    \"node_modules/playwright\": {\n+      \"version\": \"1.58.0\",\n+      \"resolved\": \"https://registry.npmjs.org/playwright/-/playwright-1.58.0.tgz\",\n+      \"integrity\": \"sha512-2SVA0sbPktiIY/MCOPX8e86ehA/e+tDNq+e5Y8qjKYti2Z/JG7xnronT/TXTIkKbYGWlCbuucZ6dziEgkoEjQQ==\",\n+      \"dev\": true,\n+      \"license\": \"Apache-2.0\",\n+      \"dependencies\": {\n+        \"playwright-core\": \"1.58.0\"\n+      },\n+      \"bin\": {\n+        \"playwright\": \"cli.js\"\n+      },\n+      \"engines\": {\n+        \"node\": \">=18\"\n+      },\n+      \"optionalDependencies\": {\n+        \"fsevents\": \"2.3.2\"\n+      }\n+    },\n+    \"node_modules/playwright-core\": {\n+      \"version\": \"1.58.0\",\n+      \"resolved\": \"https://registry.npmjs.org/playwright-core/-/playwright-core-1.58.0.tgz\",\n+      \"integrity\": \"sha512-aaoB1RWrdNi3//rOeKuMiS65UCcgOVljU46At6eFcOFPFHWtd2weHRRow6z/n+Lec0Lvu0k9ZPKJSjPugikirw==\",\n+      \"dev\": true,\n+      \"license\": \"Apache-2.0\",\n+      \"bin\": {\n+        \"playwright-core\": \"cli.js\"\n+      },\n+      \"engines\": {\n+        \"node\": \">=18\"\n+      }\n+    },\n+    \"node_modules/playwright/node_modules/fsevents\": {\n+      \"version\": \"2.3.2\",\n+      \"resolved\": \"https://registry.npmjs.org/fsevents/-/fsevents-2.3.2.tgz\",\n+      \"integrity\": \"sha512-xiqMQR4xAeHTuB9uWm+fFRcIOgKBMiOBP+eXiyT7jsgVCq1bkVygt00oASowB7EdtpOHaaPgKt812P9ab+DDKA==\",\n+      \"dev\": true,\n+      \"hasInstallScript\": true,\n+      \"license\": \"MIT\",\n+      \"optional\": true,\n+      \"os\": [\n+        \"darwin\"\n+      ],\n+      \"engines\": {\n+        \"node\": \"^8.16.0 || ^10.6.0 || >=11.0.0\"\n+      }\n+    },\n     \"node_modules/postcss\": {\n       \"version\": \"8.5.6\",\n       \"resolved\": \"https://registry.npmjs.org/postcss/-/postcss-8.5.6.tgz\",\ndiff --git a/package.json b/package.json\nindex 6633109..c2b642a 100644\n--- a/package.json\n+++ b/package.json\n@@ -10,11 +10,16 @@\n     \"serve\": \"npm run build && npx serve deploy\",\n     \"dev\": \"concurrently \\\"tsc --watch\\\" \\\"npx serve deploy\\\"\",\n     \"test\": \"vitest run\",\n-    \"test:watch\": \"vitest\"\n+    \"test:watch\": \"vitest\",\n+    \"test:e2e\": \"playwright test\",\n+    \"test:e2e:headed\": \"playwright test --headed\",\n+    \"test:e2e:debug\": \"playwright test --debug\",\n+    \"test:e2e:report\": \"playwright show-report\"\n   },\n   \"devDependencies\": {\n-    \"typescript\": \"^5.3.0\",\n+    \"@playwright/test\": \"^1.58.0\",\n     \"concurrently\": \"^8.2.0\",\n+    \"typescript\": \"^5.3.0\",\n     \"vitest\": \"^1.0.0\"\n   },\n   \"license\": \"AGPL-3.0\"\ndiff --git a/playwright.config.ts b/playwright.config.ts\nnew file mode 100644\nindex 0000000..2da0be8\n--- /dev/null\n+++ b/playwright.config.ts\n@@ -0,0 +1,76 @@\n+import { defineConfig, devices } from '@playwright/test';\n+\n+/**\n+ * Playwright configuration for e2e tests\n+ * @see https://playwright.dev/docs/test-configuration\n+ */\n+export default defineConfig({\n+  testDir: './e2e',\n+\n+  /* Run tests in files in parallel */\n+  fullyParallel: true,\n+\n+  /* Fail the build on CI if you accidentally left test.only in the source code */\n+  forbidOnly: !!process.env.CI,\n+\n+  /* Retry on CI only */\n+  retries: process.env.CI ? 2 : 0,\n+\n+  /* Opt out of parallel tests on CI */\n+  workers: process.env.CI ? 1 : undefined,\n+\n+  /* Reporter to use */\n+  reporter: [\n+    ['html', { outputFolder: 'playwright-report' }],\n+    ['list'],\n+    ['json', { outputFile: 'test-results/results.json' }]\n+  ],\n+\n+  /* Shared settings for all the projects below */\n+  use: {\n+    /* Base URL to use in actions like `await page.goto('/')` */\n+    baseURL: 'http://localhost:3000',\n+\n+    /* Collect trace when retrying the failed test */\n+    trace: 'on-first-retry',\n+\n+    /* Capture screenshot on failure */\n+    screenshot: 'on',\n+\n+    /* Record video on failure */\n+    video: 'on-first-retry',\n+  },\n+\n+  /* Configure projects for major browsers */\n+  projects: [\n+    {\n+      name: 'chromium',\n+      use: {\n+        ...devices['Desktop Chrome'],\n+        // Capture console logs\n+        launchOptions: {\n+          args: ['--enable-logging', '--v=1']\n+        }\n+      },\n+    },\n+  ],\n+\n+  /* Run your local dev server before starting the tests */\n+  webServer: {\n+    command: 'npm run serve',\n+    url: 'http://localhost:3000',\n+    reuseExistingServer: !process.env.CI,\n+    timeout: 120 * 1000,\n+  },\n+\n+  /* Output directory for test artifacts */\n+  outputDir: 'test-results/',\n+\n+  /* Global timeout for each test */\n+  timeout: 30000,\n+\n+  /* Expect timeout */\n+  expect: {\n+    timeout: 5000,\n+  },\n+});\ndiff --git a/src/app.ts b/src/app.ts\nindex cb0f6e2..234e0e1 100644\n--- a/src/app.ts\n+++ b/src/app.ts\n@@ -88,17 +88,62 @@ if ('serviceWorker' in navigator) {\n         updatePWAStatus('Registration failed');\n       });\n \n-    // Reload page when new SW takes over\n-    let refreshing = false;\n+    // When new SW takes over, show reload banner instead of auto-reloading\n     navigator.serviceWorker.addEventListener('controllerchange', () => {\n-      if (refreshing) return;\n-      refreshing = true;\n-      console.log('SW: Controller changed, reloading...');\n-      window.location.reload();\n+      console.log('SW: Controller changed, showing reload banner');\n+      showReloadBanner();\n     });\n   });\n }\n \n+// Show a banner prompting user to reload for updates\n+function showReloadBanner(): void {\n+  // Check if banner already exists\n+  if (document.getElementById('reload-banner')) return;\n+\n+  const banner = document.createElement('div');\n+  banner.id = 'reload-banner';\n+  banner.style.cssText = `\n+    position: fixed;\n+    top: 0;\n+    left: 0;\n+    right: 0;\n+    background: #4a90d9;\n+    color: white;\n+    padding: 12px 20px;\n+    display: flex;\n+    justify-content: space-between;\n+    align-items: center;\n+    z-index: 10000;\n+    font-family: system-ui, sans-serif;\n+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);\n+  `;\n+\n+  const message = document.createElement('span');\n+  message.textContent = 'A new version is available!';\n+\n+  const reloadButton = document.createElement('button');\n+  reloadButton.textContent = 'Reload to update';\n+  reloadButton.style.cssText = `\n+    background: white;\n+    color: #4a90d9;\n+    border: none;\n+    padding: 8px 16px;\n+    border-radius: 4px;\n+    cursor: pointer;\n+    font-weight: bold;\n+  `;\n+  reloadButton.addEventListener('click', () => {\n+    window.location.reload();\n+  });\n+\n+  banner.appendChild(message);\n+  banner.appendChild(reloadButton);\n+  document.body.prepend(banner);\n+\n+  updatePWAStatus('Reload to update');\n+}\n+\n // Update button click handler\n if (updateButton) {\n   updateButton.addEventListener('click', handleUpdateClick);",
+          "actualWorkers": 1
+        },
+        "id": "chromium",
+        "name": "chromium",
+        "testDir": "/home/runner/work/claudetest123/claudetest123/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 30000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "html",
+        {
+          "outputFolder": "playwright-report"
+        }
+      ],
+      [
+        "list",
+        null
+      ],
+      [
+        "json",
+        {
+          "outputFile": "test-results/results.json"
+        }
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "runAgents": "none",
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.58.0",
+    "workers": 1,
+    "webServer": {
+      "command": "npm run serve",
+      "url": "http://localhost:3000",
+      "reuseExistingServer": false,
+      "timeout": 120000
+    }
+  },
+  "suites": [
+    {
+      "title": "heat-game.spec.ts",
+      "file": "heat-game.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Heat Game E2E Tests",
+          "file": "heat-game.spec.ts",
+          "line": 40,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should load the game and display initial state",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 486,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-30T17:35:11.529Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-2428b-e-and-display-initial-state-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-2428b-e-and-display-initial-state-chromium/attachments/browser-logs-252e98eebb6d2a6fd5612fd184955e74f7d8fa0e.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-1f7f90ca45f76c134f4d",
+              "file": "heat-game.spec.ts",
+              "line": 85,
+              "column": 3
+            },
+            {
+              "title": "should place a Fuel Rod on the grid",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 615,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-30T17:35:12.246Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-05fff-lace-a-Fuel-Rod-on-the-grid-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-05fff-lace-a-Fuel-Rod-on-the-grid-chromium/attachments/browser-logs-daa597c1e58cdd3735064670bc098a56f535a7d5.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-a31bde006f3c29450fad",
+              "file": "heat-game.spec.ts",
+              "line": 115,
+              "column": 3
+            },
+            {
+              "title": "should place multiple structures and observe heat dynamics",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1184,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-30T17:35:12.880Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-edba4-s-and-observe-heat-dynamics-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-edba4-s-and-observe-heat-dynamics-chromium/attachments/browser-logs-a9526112523c68aa24fe78334be3ec2af4a1ba62.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-2ed04ebe32d9c471053a",
+              "file": "heat-game.spec.ts",
+              "line": 145,
+              "column": 3
+            },
+            {
+              "title": "should demolish a structure with right-click",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 622,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-30T17:35:14.078Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-53724--structure-with-right-click-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-53724--structure-with-right-click-chromium/attachments/browser-logs-d97b4f4e87a5cc31e1b5dee61d33b7cf6ee7bb2f.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-ff211d87a2ad19067056",
+              "file": "heat-game.spec.ts",
+              "line": 182,
+              "column": 3
+            },
+            {
+              "title": "should build a power generation setup",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1735,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-30T17:35:14.713Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-206ae-ld-a-power-generation-setup-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-206ae-ld-a-power-generation-setup-chromium/attachments/browser-logs-6db27ca250b3a1a4083663dd5a90aeedb0e1a354.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-abe0096aa1a1c45a3b34",
+              "file": "heat-game.spec.ts",
+              "line": 210,
+              "column": 3
+            },
+            {
+              "title": "should show heat buildup with clustered fuel rods",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1587,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-30T17:35:16.461Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-1ce31-up-with-clustered-fuel-rods-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-1ce31-up-with-clustered-fuel-rods-chromium/attachments/browser-logs-4108f70a5376472a80710ba1c287f526e1cfc9b4.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-ac87d21624a439db98b8",
+              "file": "heat-game.spec.ts",
+              "line": 247,
+              "column": 3
+            },
+            {
+              "title": "should not allow building without sufficient money",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 551,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-30T17:35:18.061Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-ee0f6-ng-without-sufficient-money-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-ee0f6-ng-without-sufficient-money-chromium/attachments/browser-logs-67852c21b9cbe344288f7cfb81aa3e88ded21441.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-b096005e15a85f67c2a8",
+              "file": "heat-game.spec.ts",
+              "line": 285,
+              "column": 3
+            },
+            {
+              "title": "should handle rapid clicking on the grid",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1205,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-30T17:35:18.626Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-c664c--rapid-clicking-on-the-grid-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-c664c--rapid-clicking-on-the-grid-chromium/attachments/browser-logs-8830c25d0c901f07d14f24299509ec6ff3fc0a0b.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-1b3f7a34798ed668be9c",
+              "file": "heat-game.spec.ts",
+              "line": 316,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-01-30T17:35:04.244Z",
+    "duration": 15662.871000000001,
+    "expected": 8,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}
