@@ -1,0 +1,512 @@
+{
+  "config": {
+    "configFile": "/home/runner/work/claudetest123/claudetest123/playwright.config.ts",
+    "rootDir": "/home/runner/work/claudetest123/claudetest123/e2e",
+    "forbidOnly": true,
+    "fullyParallel": true,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "ci": {
+        "commitHref": "https://github.com/bjuergens/claudetest123/commit/f550f9f7dbd82ea2213195cc60e6d3338a0a5ba8",
+        "commitHash": "f550f9f7dbd82ea2213195cc60e6d3338a0a5ba8",
+        "prHref": "https://github.com/bjuergens/claudetest123/pull/8",
+        "prTitle": "Simplify architecture, reduce log clutter, clean up tests",
+        "prBaseHash": "1f0d313b62073b66eb15951d37e7a9ad4bba3d7c",
+        "buildHref": "https://github.com/bjuergens/claudetest123/actions/runs/21531646915"
+      },
+      "gitCommit": {
+        "shortHash": "f550f9f",
+        "hash": "f550f9f7dbd82ea2213195cc60e6d3338a0a5ba8",
+        "subject": "Merge 563d5795cf07e99e04bed9572620e35a9ce6fc5a into 1f0d313b62073b66eb15951d37e7a9ad4bba3d7c",
+        "body": "Merge 563d5795cf07e99e04bed9572620e35a9ce6fc5a into 1f0d313b62073b66eb15951d37e7a9ad4bba3d7c\n",
+        "author": {
+          "name": "Björn Jürgens",
+          "email": "4362465+bjuergens@users.noreply.github.com",
+          "time": 1769809358000
+        },
+        "committer": {
+          "name": "GitHub",
+          "email": "noreply@github.com",
+          "time": 1769809358000
+        },
+        "branch": "HEAD"
+      },
+      "gitDiff": "diff --git a/claude.md b/claude.md\nindex 6b453c5..915fdfd 100644\n--- a/claude.md\n+++ b/claude.md\n@@ -1,69 +1,61 @@\n # Claude Project Instructions\n \n-This file contains instructions for Claude AI when working with this project.\n-\n ## Project Overview\n \n-This is a **Heat Management Idle Game** - a PWA where players manage heat flow on a 16x16 grid to generate power and money. See `GAME_VISION.md` for the full game design document.\n+Heat Management Idle Game - a PWA where players manage heat flow on a 16x16 grid to generate power and money. See `GAME_VISION.md` for full game design.\n \n ## Project Structure\n \n ```\n-.\n-├── src/                 # TypeScript source files\n-│   ├── app.ts           # PWA setup and registration\n-│   └── game/            # Game-specific code\n-│       ├── HeatGame.ts          # Core game logic (grid, heat, economy)\n-│       ├── HeatGame.test.ts     # Unit tests for game logic\n-│       └── HeatGameRenderer.ts  # UI/rendering (canvas, overlays)\n-├── deploy/              # GitHub Pages deployment folder (compiled output)\n-│   ├── index.html       # Main HTML file with PWA meta tags\n-│   ├── manifest.json    # PWA manifest configuration\n-│   ├── sw.js            # Service Worker for offline functionality\n-│   ├── styles.css       # Styling\n-│   └── icons/           # App icons\n-├── GAME_VISION.md       # Game design document\n-├── vitest.config.ts     # Test configuration\n-├── tsconfig.json        # TypeScript configuration\n-├── package.json         # Dependencies and scripts\n-├── claude.md            # This file - Claude instructions\n-└── readme.md            # Project documentation\n+src/\n+  constants.ts           # Shared game constants (GRID_SIZE, CELL_SIZE, etc.)\n+  app.ts                 # PWA setup and game initialization\n+  game/\n+    HeatGame.ts          # Core game logic (grid, heat, economy)\n+    HeatGame.test.ts     # Unit tests\n+    HeatGameRenderer.ts  # Canvas rendering and UI\n+deploy/                  # GitHub Pages deployment (compiled output)\n+e2e/                     # Playwright e2e tests\n ```\n \n ## Architecture\n \n-### Game Logic (`HeatGame.ts`)\n-- Manages 16x16 grid of cells\n-- Handles heat simulation (generation, transfer, dissipation)\n-- Structure management (building, breaking, meltdowns)\n-- Power generation and money economy\n-- Event system for UI updates\n+- **constants.ts** - Single source of truth for game constants\n+- **HeatGame.ts** - Pure game logic, no DOM dependencies\n+- **HeatGameRenderer.ts** - Canvas rendering and UI, depends on HeatGame\n+- **app.ts** - PWA registration, game loop, event wiring\n+\n+## Error Handling Philosophy\n+\n+**Fail fast.** Let errors surface immediately so we can fix them.\n \n-### Renderer (`HeatGameRenderer.ts`)\n-- Canvas-based grid visualization\n-- Heat overlay with color gradients\n-- Structure rendering with symbols\n-- Mouse interaction handling\n-- Build menu and UI panels\n+- **Don't silently swallow exceptions** - at minimum log a warning, but prefer not catching at all\n+- **Methods should check preconditions** and throw if context is invalid\n+- **No unnecessary null checks** - if we get null pointer errors, the game crashes and we fix it\n+- **Null checks are OK** when methods legitimately return null (e.g., `getCell` for out-of-bounds)\n+- **The game loop has a top-level try-catch** that:\n+  - Stops the game gracefully\n+  - Logs the error and game state to console\n+  - Shows a crash banner to the user\n+- **It's OK for the game to crash** from unexpected exceptions - we want to know about bugs\n \n ## Development Commands\n \n ```bash\n npm install          # Install dependencies\n npm run build        # Compile TypeScript\n-npm run test         # Run unit tests\n-npm run test:watch   # Run tests in watch mode\n+npm test             # Run unit tests\n+npm run test:e2e     # Run e2e tests\n npm run dev          # Build + serve with hot reload\n ```\n \n-## Development Guidelines\n+## Guidelines\n \n-- All source code goes in `src/`\n-- TypeScript compiles to `deploy/` folder\n-- Game logic should be tested - add tests for new features\n-- Keep game logic separate from rendering (MVC pattern)\n-- The PWA supports offline functionality via Service Workers\n+- Game logic must be testable without DOM\n+- Keep rendering separate from game state\n+- Add tests for new game features\n+- PWA supports offline via Service Workers\n \n ## Live Demo\n \n-The app is deployed at: https://bjuergens.github.io/claudetest123/\n+https://bjuergens.github.io/claudetest123/\ndiff --git a/deploy/constants.js b/deploy/constants.js\nnew file mode 100644\nindex 0000000..8596da6\n--- /dev/null\n+++ b/deploy/constants.js\n@@ -0,0 +1,7 @@\n+/**\n+ * Shared game constants\n+ */\n+export const GRID_SIZE = 16;\n+export const CELL_SIZE = 28;\n+export const GRID_PADDING = 8;\n+export const TICK_INTERVAL = 100; // ms per tick\ndiff --git a/deploy/sw.js b/deploy/sw.js\nindex 73dc1a0..5af2d59 100644\n--- a/deploy/sw.js\n+++ b/deploy/sw.js\n@@ -17,13 +17,8 @@ const urlsToCache = [\n // Install event - cache resources\n self.addEventListener('install', (event) => {\n   event.waitUntil(\n-    caches.open(CACHE_NAME)\n-      .then((cache) => {\n-        console.log('SW: Caching app shell');\n-        return cache.addAll(urlsToCache);\n-      })\n+    caches.open(CACHE_NAME).then((cache) => cache.addAll(urlsToCache))\n   );\n-  // Don't call skipWaiting() - let the app control when to update\n });\n \n // Fetch event - serve from cache, fallback to network\n@@ -58,23 +53,17 @@ self.addEventListener('activate', (event) => {\n   event.waitUntil(\n     caches.keys().then((cacheNames) => {\n       return Promise.all(\n-        cacheNames.map((cacheName) => {\n-          if (cacheName !== CACHE_NAME) {\n-            console.log('SW: Deleting old cache:', cacheName);\n-            return caches.delete(cacheName);\n-          }\n-        })\n+        cacheNames\n+          .filter((cacheName) => cacheName !== CACHE_NAME)\n+          .map((cacheName) => caches.delete(cacheName))\n       );\n     })\n   );\n-  // Don't call clients.claim() - let the page control when to use the new SW\n-  // This prevents automatic reload on first install\n });\n \n // Listen for skip waiting message from the app\n self.addEventListener('message', (event) => {\n-  if (event.data && event.data.type === 'SKIP_WAITING') {\n-    console.log('SW: Received skip waiting message');\n+  if (event.data?.type === 'SKIP_WAITING') {\n     self.skipWaiting();\n   }\n });\ndiff --git a/readme.md b/readme.md\nindex b99782b..2ecd26e 100644\n--- a/readme.md\n+++ b/readme.md\n@@ -1,89 +1,44 @@\n-# Idle Game PWA\n+# Heat Management Idle Game\n \n-A simple idle game built as a Progressive Web App (PWA) with TypeScript.\n+A PWA idle game where you manage heat flow on a 16x16 grid to generate power and money.\n \n ## Live Demo\n \n-The app is automatically deployed to GitHub Pages:\n-\n **https://bjuergens.github.io/claudetest123/**\n \n-Test it directly on your mobile device - the PWA will work perfectly in your browser and can be installed to your home screen!\n+Works on mobile and desktop. Can be installed to your home screen.\n \n-## PWA Features\n+## Features\n \n-- **Installable**: Can be installed on desktop and mobile devices\n-- **Offline Support**: Works without internet connection using Service Workers\n-- **Responsive Design**: Adapts to all screen sizes\n-- **Fast Loading**: Cached resources for instant loading\n+- Place fuel rods, ventilators, turbines, and more\n+- Manage heat transfer to avoid meltdowns\n+- Generate power and earn money\n+- Offline support via Service Workers\n+- Installable as a PWA\n \n ## Project Structure\n \n ```\n-.\n-├── src/                 # TypeScript source files\n-│   └── app.ts           # Main app logic\n-├── deploy/              # GitHub Pages deployment folder (build output)\n-│   ├── index.html       # Main HTML file with PWA meta tags\n-│   ├── manifest.json    # PWA manifest configuration\n-│   ├── sw.js            # Service Worker for offline functionality\n-│   ├── app.js           # Compiled from src/app.ts\n-│   ├── styles.css       # Styling\n-│   └── icons/           # App icons\n-├── .github/workflows/   # GitHub Actions for deployment\n-├── tsconfig.json        # TypeScript configuration\n-├── package.json         # npm dependencies and scripts\n-└── LICENSE              # License file\n+src/\n+  constants.ts           # Shared game constants\n+  app.ts                 # PWA setup and game initialization\n+  game/\n+    HeatGame.ts          # Core game logic\n+    HeatGame.test.ts     # Unit tests\n+    HeatGameRenderer.ts  # Canvas rendering\n+deploy/                  # Build output (GitHub Pages)\n+e2e/                     # End-to-end tests\n ```\n \n-## Local Development\n-\n-1. Install dependencies:\n-   ```bash\n-   npm install\n-   ```\n-\n-2. Build and serve:\n-   ```bash\n-   # Build once and serve\n-   npm run serve\n-\n-   # Or: watch mode with live server (recommended for development)\n-   npm run dev\n-   ```\n-\n-3. Open your browser and navigate to `http://localhost:3000`\n-\n-4. The PWA should be installable (look for the install button in your browser)\n-\n-## Build Commands\n+## Development\n \n ```bash\n-npm run build    # Compile TypeScript to deploy/\n-npm run watch    # Watch mode - recompile on changes\n-npm run serve    # Build + start local server\n-npm run dev      # Watch + serve concurrently\n+npm install      # Install dependencies\n+npm run build    # Compile TypeScript\n+npm test         # Run unit tests\n+npm run dev      # Build + serve with hot reload\n ```\n \n-## Development\n-\n-The TypeScript source is in `src/`. The compiled JavaScript goes to `deploy/`, which is served by GitHub Pages.\n-\n-### Next Steps\n-\n-- Implement game logic\n-- Add game state management\n-- Create resource generation mechanics\n-- Add upgrade systems\n-- Implement save/load functionality\n-\n ## Browser Support\n \n-Works in all modern browsers that support:\n-- Service Workers\n-- Web App Manifest\n-- ES6+ JavaScript\n-\n-## License\n-\n-See LICENSE file for details.\n+Works in all modern browsers with Service Worker support.\ndiff --git a/src/app.ts b/src/app.ts\nindex 234e0e1..f45544c 100644\n--- a/src/app.ts\n+++ b/src/app.ts\n@@ -1,5 +1,6 @@\n import { HeatGame, StructureType } from './game/HeatGame.js';\n import { HeatGameRenderer } from './game/HeatGameRenderer.js';\n+import { CELL_SIZE, GRID_PADDING, TICK_INTERVAL } from './constants.js';\n \n // PWA Install Prompt interface (not in standard lib.dom.d.ts)\n interface BeforeInstallPromptEvent extends Event {\n@@ -55,7 +56,6 @@ if ('serviceWorker' in navigator) {\n   window.addEventListener('load', () => {\n     navigator.serviceWorker.register('./sw.js')\n       .then((registration) => {\n-        console.log('Service Worker registered:', registration.scope);\n         updatePWAStatus('Registered');\n \n         // Check for updates on registration\n@@ -63,12 +63,8 @@ if ('serviceWorker' in navigator) {\n           const newWorker = registration.installing;\n           if (!newWorker) return;\n \n-          console.log('SW: Update found, new worker installing...');\n-\n           newWorker.addEventListener('statechange', () => {\n             if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {\n-              // New SW is installed but waiting\n-              console.log('SW: New version available');\n               waitingServiceWorker = newWorker;\n               showUpdateButton();\n               updatePWAStatus('Update available');\n@@ -84,15 +80,12 @@ if ('serviceWorker' in navigator) {\n         }\n       })\n       .catch((error) => {\n-        console.error('Service Worker registration failed:', error);\n+        console.warn('Service Worker registration failed:', error);\n         updatePWAStatus('Registration failed');\n       });\n \n     // When new SW takes over, show reload banner instead of auto-reloading\n-    navigator.serviceWorker.addEventListener('controllerchange', () => {\n-      console.log('SW: Controller changed, showing reload banner');\n-      showReloadBanner();\n-    });\n+    navigator.serviceWorker.addEventListener('controllerchange', showReloadBanner);\n   });\n }\n \n@@ -166,8 +159,6 @@ if (installButton) {\n     await deferredPrompt.prompt();\n     const { outcome } = await deferredPrompt.userChoice;\n \n-    console.log(`User response to install prompt: ${outcome}`);\n-\n     if (outcome === 'accepted') {\n       updatePWAStatus('Installed');\n     }\n@@ -180,7 +171,6 @@ if (installButton) {\n }\n \n window.addEventListener('appinstalled', () => {\n-  console.log('PWA was installed');\n   updatePWAStatus('Installed');\n   deferredPrompt = null;\n });\n@@ -194,63 +184,78 @@ window.addEventListener('load', () => {\n   }\n });\n \n-// ============================================\n-// Game Initialization\n-// ============================================\n-\n function initGame(): void {\n   if (!canvas) {\n-    console.error('Game canvas not found');\n-    return;\n+    throw new Error('Game canvas element not found');\n   }\n \n-  // Create game instance\n   const game = new HeatGame(500);\n-\n-  // Create renderer\n   const renderer = new HeatGameRenderer(game, canvas, {\n-    cellSize: 28,\n-    gridPadding: 8,\n+    cellSize: CELL_SIZE,\n+    gridPadding: GRID_PADDING,\n   });\n \n-  // Setup UI if container exists\n   if (gameUI) {\n     renderer.createUI(gameUI);\n   }\n \n-  // Handle cell clicks\n   renderer.onCellClick((x, y, button) => {\n     if (button === 0) {\n-      // Left click - build selected structure\n       const structure = renderer.getSelectedStructure();\n       if (game.canBuild(x, y, structure)) {\n         game.build(x, y, structure);\n       }\n     } else if (button === 2) {\n-      // Right click - demolish\n       game.demolish(x, y);\n     }\n   });\n \n-  // Game loop\n-  const TICK_INTERVAL = 100; // ms per tick\n   let lastTick = 0;\n+  let running = true;\n \n   function gameLoop(timestamp: number): void {\n-    if (timestamp - lastTick >= TICK_INTERVAL) {\n-      game.tick();\n-      lastTick = timestamp;\n-    }\n+    if (!running) return;\n \n-    renderer.render();\n-    renderer.updateUI();\n-    requestAnimationFrame(gameLoop);\n+    try {\n+      if (timestamp - lastTick >= TICK_INTERVAL) {\n+        game.tick();\n+        lastTick = timestamp;\n+      }\n+      renderer.render();\n+      renderer.updateUI();\n+      requestAnimationFrame(gameLoop);\n+    } catch (error) {\n+      running = false;\n+      handleGameCrash(error, game);\n+    }\n   }\n \n-  // Start the game loop\n   requestAnimationFrame(gameLoop);\n+}\n \n-  console.log('Heat Management Game initialized');\n+function handleGameCrash(error: unknown, game: HeatGame): void {\n+  const state = {\n+    money: game.getMoney(),\n+    ticks: game.getTickCount(),\n+    meltdowns: game.getMeltdownCount(),\n+    totalPower: game.getTotalPowerGenerated(),\n+    grid: game.getGridSnapshot(),\n+  };\n+\n+  console.error('Game crashed:', error);\n+  console.error('Game state at crash:', JSON.stringify(state, null, 2));\n+\n+  const banner = document.createElement('div');\n+  banner.style.cssText = `\n+    position: fixed; top: 0; left: 0; right: 0;\n+    background: #d32f2f; color: white; padding: 16px;\n+    font-family: monospace; z-index: 10000;\n+  `;\n+  banner.innerHTML = `\n+    <strong>Game crashed!</strong> ${error instanceof Error ? error.message : String(error)}\n+    <br><small>Check console for details. Refresh to restart.</small>\n+  `;\n+  document.body.prepend(banner);\n }\n \n // Start game when DOM is ready\ndiff --git a/src/constants.ts b/src/constants.ts\nnew file mode 100644\nindex 0000000..a9d586b\n--- /dev/null\n+++ b/src/constants.ts\n@@ -0,0 +1,8 @@\n+/**\n+ * Shared game constants\n+ */\n+\n+export const GRID_SIZE = 16;\n+export const CELL_SIZE = 28;\n+export const GRID_PADDING = 8;\n+export const TICK_INTERVAL = 100; // ms per tick\ndiff --git a/src/game/HeatGame.test.ts b/src/game/HeatGame.test.ts\nindex 0129af4..a27b0ee 100644\n--- a/src/game/HeatGame.test.ts\n+++ b/src/game/HeatGame.test.ts\n@@ -7,11 +7,32 @@ import {\n   GameEvent,\n } from './HeatGame.js';\n \n+/**\n+ * Build a heat trap that causes meltdown - 2 fuel rods surrounded by insulation\n+ */\n+function buildMeltdownTrap(game: HeatGame, centerX = 8, centerY = 8): void {\n+  game.build(centerX, centerY, StructureType.FuelRod);\n+  game.build(centerX, centerY + 1, StructureType.FuelRod);\n+  // Surround with insulation to trap heat\n+  for (const [dx, dy] of [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [1, 1], [-1, 2], [0, 2], [1, 2]]) {\n+    game.build(centerX + dx, centerY + dy, StructureType.InsulationPlate);\n+  }\n+}\n+\n+/**\n+ * Run ticks until meltdown occurs or max iterations reached\n+ */\n+function runUntilMeltdown(game: HeatGame, maxTicks = 500): void {\n+  for (let i = 0; i < maxTicks && game.getMeltdownCount() === 0; i++) {\n+    game.tick();\n+  }\n+}\n+\n describe('HeatGame', () => {\n   let game: HeatGame;\n \n   beforeEach(() => {\n-    game = new HeatGame(1000); // Start with 1000 money for testing\n+    game = new HeatGame(1000);\n   });\n \n   describe('initialization', () => {\n@@ -279,55 +300,16 @@ describe('HeatGame', () => {\n \n   describe('meltdown', () => {\n     it('should trigger meltdown when fuel rod overheats', () => {\n-      // Create fuel rods in the center completely surrounded by insulation to trap heat\n-      // This prevents heat from escaping to the environment\n-      game.build(8, 8, StructureType.FuelRod);\n-      game.build(8, 9, StructureType.FuelRod); // Second fuel rod for more heat\n-      // Surround with insulation to trap heat\n-      game.build(7, 7, StructureType.InsulationPlate);\n-      game.build(8, 7, StructureType.InsulationPlate);\n-      game.build(9, 7, StructureType.InsulationPlate);\n-      game.build(7, 8, StructureType.InsulationPlate);\n-      game.build(9, 8, StructureType.InsulationPlate);\n-      game.build(7, 9, StructureType.InsulationPlate);\n-      game.build(9, 9, StructureType.InsulationPlate);\n-      game.build(7, 10, StructureType.InsulationPlate);\n-      game.build(8, 10, StructureType.InsulationPlate);\n-      game.build(9, 10, StructureType.InsulationPlate);\n-\n-      // Run many ticks until meltdown\n-      for (let i = 0; i < 500; i++) {\n-        game.tick();\n-        if (game.getMeltdownCount() > 0) break;\n-      }\n-\n+      buildMeltdownTrap(game);\n+      runUntilMeltdown(game);\n       expect(game.getMeltdownCount()).toBe(1);\n     });\n \n     it('should clear all structures on meltdown', () => {\n-      // Same setup as above\n-      game.build(8, 8, StructureType.FuelRod);\n-      game.build(8, 9, StructureType.FuelRod);\n-      game.build(7, 7, StructureType.InsulationPlate);\n-      game.build(8, 7, StructureType.InsulationPlate);\n-      game.build(9, 7, StructureType.InsulationPlate);\n-      game.build(7, 8, StructureType.InsulationPlate);\n-      game.build(9, 8, StructureType.InsulationPlate);\n-      game.build(7, 9, StructureType.InsulationPlate);\n-      game.build(9, 9, StructureType.InsulationPlate);\n-      game.build(7, 10, StructureType.InsulationPlate);\n-      game.build(8, 10, StructureType.InsulationPlate);\n-      game.build(9, 10, StructureType.InsulationPlate);\n-      // Add a structure far away that should also be destroyed\n-      game.build(15, 15, StructureType.Ventilator);\n-\n-      // Run until meltdown\n-      for (let i = 0; i < 500; i++) {\n-        game.tick();\n-        if (game.getMeltdownCount() > 0) break;\n-      }\n+      buildMeltdownTrap(game);\n+      game.build(15, 15, StructureType.Ventilator); // Far away structure\n+      runUntilMeltdown(game);\n \n-      // All structures should be gone\n       const grid = game.getGridSnapshot();\n       for (let y = 0; y < GRID_SIZE; y++) {\n         for (let x = 0; x < GRID_SIZE; x++) {\n@@ -337,38 +319,18 @@ describe('HeatGame', () => {\n     });\n \n     it('should keep money after meltdown', () => {\n-      // Earn some money first with a safe setup\n+      // Earn money with a safe setup first\n       game.build(2, 8, StructureType.FuelRod);\n       game.build(2, 9, StructureType.Turbine);\n       game.build(2, 10, StructureType.Substation);\n       game.build(2, 7, StructureType.Ventilator);\n \n-      for (let i = 0; i < 30; i++) {\n-        game.tick();\n-      }\n-\n+      for (let i = 0; i < 30; i++) game.tick();\n       const moneyBeforeMeltdown = game.getMoney();\n \n-      // Now cause meltdown with trapped fuel rods in center\n-      game.build(8, 8, StructureType.FuelRod);\n-      game.build(8, 9, StructureType.FuelRod);\n-      game.build(7, 7, StructureType.InsulationPlate);\n-      game.build(8, 7, StructureType.InsulationPlate);\n-      game.build(9, 7, StructureType.InsulationPlate);\n-      game.build(7, 8, StructureType.InsulationPlate);\n-      game.build(9, 8, StructureType.InsulationPlate);\n-      game.build(7, 9, StructureType.InsulationPlate);\n-      game.build(9, 9, StructureType.InsulationPlate);\n-      game.build(7, 10, StructureType.InsulationPlate);\n-      game.build(8, 10, StructureType.InsulationPlate);\n-      game.build(9, 10, StructureType.InsulationPlate);\n-\n-      for (let i = 0; i < 500; i++) {\n-        game.tick();\n-        if (game.getMeltdownCount() > 0) break;\n-      }\n+      buildMeltdownTrap(game);\n+      runUntilMeltdown(game);\n \n-      // Money should be preserved (might have earned a bit more before meltdown)\n       expect(game.getMoney()).toBeGreaterThanOrEqual(moneyBeforeMeltdown - 500);\n     });\n \n@@ -376,26 +338,10 @@ describe('HeatGame', () => {\n       const events: GameEvent[] = [];\n       game.addEventListener((event) => events.push(event));\n \n-      game.build(8, 8, StructureType.FuelRod);\n-      game.build(8, 9, StructureType.FuelRod);\n-      game.build(7, 7, StructureType.InsulationPlate);\n-      game.build(8, 7, StructureType.InsulationPlate);\n-      game.build(9, 7, StructureType.InsulationPlate);\n-      game.build(7, 8, StructureType.InsulationPlate);\n-      game.build(9, 8, StructureType.InsulationPlate);\n-      game.build(7, 9, StructureType.InsulationPlate);\n-      game.build(9, 9, StructureType.InsulationPlate);\n-      game.build(7, 10, StructureType.InsulationPlate);\n-      game.build(8, 10, StructureType.InsulationPlate);\n-      game.build(9, 10, StructureType.InsulationPlate);\n-\n-      for (let i = 0; i < 500; i++) {\n-        game.tick();\n-        if (game.getMeltdownCount() > 0) break;\n-      }\n+      buildMeltdownTrap(game);\n+      runUntilMeltdown(game);\n \n-      const meltdownEvents = events.filter(e => e.type === 'meltdown');\n-      expect(meltdownEvents.length).toBe(1);\n+      expect(events.filter(e => e.type === 'meltdown')).toHaveLength(1);\n     });\n   });\n \ndiff --git a/src/game/HeatGame.ts b/src/game/HeatGame.ts\nindex a76c740..6a1182c 100644\n--- a/src/game/HeatGame.ts\n+++ b/src/game/HeatGame.ts\n@@ -1,15 +1,11 @@\n /**\n  * Heat Management Game - Core Game Logic\n- *\n- * This class handles all game state and simulation:\n- * - 16x16 grid management\n- * - Heat transfer calculations\n- * - Structure placement and destruction\n- * - Power generation and economy\n- * - Meltdown detection\n  */\n \n-export const GRID_SIZE = 16;\n+import { GRID_SIZE } from '../constants.js';\n+\n+// Re-export for backward compatibility\n+export { GRID_SIZE };\n \n export enum StructureType {\n   Empty = 'empty',\ndiff --git a/src/game/HeatGameRenderer.ts b/src/game/HeatGameRenderer.ts\nindex 9faef05..a000fea 100644\n--- a/src/game/HeatGameRenderer.ts\n+++ b/src/game/HeatGameRenderer.ts\n@@ -1,11 +1,5 @@\n /**\n  * Heat Management Game - UI/Rendering\n- *\n- * This class handles all visual presentation:\n- * - Grid rendering with heat visualization\n- * - Structure sprites/icons\n- * - UI panels (money, stats, build menu)\n- * - Animations and visual effects\n  */\n \n import {\n@@ -72,9 +66,14 @@ export class HeatGameRenderer {\n   private buildMenu: HTMLElement | null = null;\n \n   constructor(game: HeatGame, canvas: HTMLCanvasElement, config: Partial<RenderConfig> = {}) {\n+    const ctx = canvas.getContext('2d');\n+    if (!ctx) {\n+      throw new Error('Failed to get 2D canvas context');\n+    }\n+\n     this.game = game;\n     this.canvas = canvas;\n-    this.ctx = canvas.getContext('2d')!;\n+    this.ctx = ctx;\n     this.config = { ...DEFAULT_RENDER_CONFIG, ...config };\n \n     this.setupCanvas();\n@@ -359,9 +358,6 @@ export class HeatGameRenderer {\n   }\n \n   private showMeltdownAnimation(): void {\n-    // Flash the canvas red\n-    const originalFill = this.ctx.fillStyle;\n-\n     let flashes = 0;\n     const flashInterval = setInterval(() => {\n       if (flashes >= 6) {\n@@ -379,8 +375,6 @@ export class HeatGameRenderer {\n \n       flashes++;\n     }, 100);\n-\n-    this.ctx.fillStyle = originalFill;\n   }\n \n   // Configuration",
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "/home/runner/work/claudetest123/claudetest123/test-results",
+        "repeatEach": 1,
+        "retries": 2,
+        "metadata": {
+          "ci": {
+            "commitHref": "https://github.com/bjuergens/claudetest123/commit/f550f9f7dbd82ea2213195cc60e6d3338a0a5ba8",
+            "commitHash": "f550f9f7dbd82ea2213195cc60e6d3338a0a5ba8",
+            "prHref": "https://github.com/bjuergens/claudetest123/pull/8",
+            "prTitle": "Simplify architecture, reduce log clutter, clean up tests",
+            "prBaseHash": "1f0d313b62073b66eb15951d37e7a9ad4bba3d7c",
+            "buildHref": "https://github.com/bjuergens/claudetest123/actions/runs/21531646915"
+          },
+          "gitCommit": {
+            "shortHash": "f550f9f",
+            "hash": "f550f9f7dbd82ea2213195cc60e6d3338a0a5ba8",
+            "subject": "Merge 563d5795cf07e99e04bed9572620e35a9ce6fc5a into 1f0d313b62073b66eb15951d37e7a9ad4bba3d7c",
+            "body": "Merge 563d5795cf07e99e04bed9572620e35a9ce6fc5a into 1f0d313b62073b66eb15951d37e7a9ad4bba3d7c\n",
+            "author": {
+              "name": "Björn Jürgens",
+              "email": "4362465+bjuergens@users.noreply.github.com",
+              "time": 1769809358000
+            },
+            "committer": {
+              "name": "GitHub",
+              "email": "noreply@github.com",
+              "time": 1769809358000
+            },
+            "branch": "HEAD"
+          },
+          "gitDiff": "diff --git a/claude.md b/claude.md\nindex 6b453c5..915fdfd 100644\n--- a/claude.md\n+++ b/claude.md\n@@ -1,69 +1,61 @@\n # Claude Project Instructions\n \n-This file contains instructions for Claude AI when working with this project.\n-\n ## Project Overview\n \n-This is a **Heat Management Idle Game** - a PWA where players manage heat flow on a 16x16 grid to generate power and money. See `GAME_VISION.md` for the full game design document.\n+Heat Management Idle Game - a PWA where players manage heat flow on a 16x16 grid to generate power and money. See `GAME_VISION.md` for full game design.\n \n ## Project Structure\n \n ```\n-.\n-├── src/                 # TypeScript source files\n-│   ├── app.ts           # PWA setup and registration\n-│   └── game/            # Game-specific code\n-│       ├── HeatGame.ts          # Core game logic (grid, heat, economy)\n-│       ├── HeatGame.test.ts     # Unit tests for game logic\n-│       └── HeatGameRenderer.ts  # UI/rendering (canvas, overlays)\n-├── deploy/              # GitHub Pages deployment folder (compiled output)\n-│   ├── index.html       # Main HTML file with PWA meta tags\n-│   ├── manifest.json    # PWA manifest configuration\n-│   ├── sw.js            # Service Worker for offline functionality\n-│   ├── styles.css       # Styling\n-│   └── icons/           # App icons\n-├── GAME_VISION.md       # Game design document\n-├── vitest.config.ts     # Test configuration\n-├── tsconfig.json        # TypeScript configuration\n-├── package.json         # Dependencies and scripts\n-├── claude.md            # This file - Claude instructions\n-└── readme.md            # Project documentation\n+src/\n+  constants.ts           # Shared game constants (GRID_SIZE, CELL_SIZE, etc.)\n+  app.ts                 # PWA setup and game initialization\n+  game/\n+    HeatGame.ts          # Core game logic (grid, heat, economy)\n+    HeatGame.test.ts     # Unit tests\n+    HeatGameRenderer.ts  # Canvas rendering and UI\n+deploy/                  # GitHub Pages deployment (compiled output)\n+e2e/                     # Playwright e2e tests\n ```\n \n ## Architecture\n \n-### Game Logic (`HeatGame.ts`)\n-- Manages 16x16 grid of cells\n-- Handles heat simulation (generation, transfer, dissipation)\n-- Structure management (building, breaking, meltdowns)\n-- Power generation and money economy\n-- Event system for UI updates\n+- **constants.ts** - Single source of truth for game constants\n+- **HeatGame.ts** - Pure game logic, no DOM dependencies\n+- **HeatGameRenderer.ts** - Canvas rendering and UI, depends on HeatGame\n+- **app.ts** - PWA registration, game loop, event wiring\n+\n+## Error Handling Philosophy\n+\n+**Fail fast.** Let errors surface immediately so we can fix them.\n \n-### Renderer (`HeatGameRenderer.ts`)\n-- Canvas-based grid visualization\n-- Heat overlay with color gradients\n-- Structure rendering with symbols\n-- Mouse interaction handling\n-- Build menu and UI panels\n+- **Don't silently swallow exceptions** - at minimum log a warning, but prefer not catching at all\n+- **Methods should check preconditions** and throw if context is invalid\n+- **No unnecessary null checks** - if we get null pointer errors, the game crashes and we fix it\n+- **Null checks are OK** when methods legitimately return null (e.g., `getCell` for out-of-bounds)\n+- **The game loop has a top-level try-catch** that:\n+  - Stops the game gracefully\n+  - Logs the error and game state to console\n+  - Shows a crash banner to the user\n+- **It's OK for the game to crash** from unexpected exceptions - we want to know about bugs\n \n ## Development Commands\n \n ```bash\n npm install          # Install dependencies\n npm run build        # Compile TypeScript\n-npm run test         # Run unit tests\n-npm run test:watch   # Run tests in watch mode\n+npm test             # Run unit tests\n+npm run test:e2e     # Run e2e tests\n npm run dev          # Build + serve with hot reload\n ```\n \n-## Development Guidelines\n+## Guidelines\n \n-- All source code goes in `src/`\n-- TypeScript compiles to `deploy/` folder\n-- Game logic should be tested - add tests for new features\n-- Keep game logic separate from rendering (MVC pattern)\n-- The PWA supports offline functionality via Service Workers\n+- Game logic must be testable without DOM\n+- Keep rendering separate from game state\n+- Add tests for new game features\n+- PWA supports offline via Service Workers\n \n ## Live Demo\n \n-The app is deployed at: https://bjuergens.github.io/claudetest123/\n+https://bjuergens.github.io/claudetest123/\ndiff --git a/deploy/constants.js b/deploy/constants.js\nnew file mode 100644\nindex 0000000..8596da6\n--- /dev/null\n+++ b/deploy/constants.js\n@@ -0,0 +1,7 @@\n+/**\n+ * Shared game constants\n+ */\n+export const GRID_SIZE = 16;\n+export const CELL_SIZE = 28;\n+export const GRID_PADDING = 8;\n+export const TICK_INTERVAL = 100; // ms per tick\ndiff --git a/deploy/sw.js b/deploy/sw.js\nindex 73dc1a0..5af2d59 100644\n--- a/deploy/sw.js\n+++ b/deploy/sw.js\n@@ -17,13 +17,8 @@ const urlsToCache = [\n // Install event - cache resources\n self.addEventListener('install', (event) => {\n   event.waitUntil(\n-    caches.open(CACHE_NAME)\n-      .then((cache) => {\n-        console.log('SW: Caching app shell');\n-        return cache.addAll(urlsToCache);\n-      })\n+    caches.open(CACHE_NAME).then((cache) => cache.addAll(urlsToCache))\n   );\n-  // Don't call skipWaiting() - let the app control when to update\n });\n \n // Fetch event - serve from cache, fallback to network\n@@ -58,23 +53,17 @@ self.addEventListener('activate', (event) => {\n   event.waitUntil(\n     caches.keys().then((cacheNames) => {\n       return Promise.all(\n-        cacheNames.map((cacheName) => {\n-          if (cacheName !== CACHE_NAME) {\n-            console.log('SW: Deleting old cache:', cacheName);\n-            return caches.delete(cacheName);\n-          }\n-        })\n+        cacheNames\n+          .filter((cacheName) => cacheName !== CACHE_NAME)\n+          .map((cacheName) => caches.delete(cacheName))\n       );\n     })\n   );\n-  // Don't call clients.claim() - let the page control when to use the new SW\n-  // This prevents automatic reload on first install\n });\n \n // Listen for skip waiting message from the app\n self.addEventListener('message', (event) => {\n-  if (event.data && event.data.type === 'SKIP_WAITING') {\n-    console.log('SW: Received skip waiting message');\n+  if (event.data?.type === 'SKIP_WAITING') {\n     self.skipWaiting();\n   }\n });\ndiff --git a/readme.md b/readme.md\nindex b99782b..2ecd26e 100644\n--- a/readme.md\n+++ b/readme.md\n@@ -1,89 +1,44 @@\n-# Idle Game PWA\n+# Heat Management Idle Game\n \n-A simple idle game built as a Progressive Web App (PWA) with TypeScript.\n+A PWA idle game where you manage heat flow on a 16x16 grid to generate power and money.\n \n ## Live Demo\n \n-The app is automatically deployed to GitHub Pages:\n-\n **https://bjuergens.github.io/claudetest123/**\n \n-Test it directly on your mobile device - the PWA will work perfectly in your browser and can be installed to your home screen!\n+Works on mobile and desktop. Can be installed to your home screen.\n \n-## PWA Features\n+## Features\n \n-- **Installable**: Can be installed on desktop and mobile devices\n-- **Offline Support**: Works without internet connection using Service Workers\n-- **Responsive Design**: Adapts to all screen sizes\n-- **Fast Loading**: Cached resources for instant loading\n+- Place fuel rods, ventilators, turbines, and more\n+- Manage heat transfer to avoid meltdowns\n+- Generate power and earn money\n+- Offline support via Service Workers\n+- Installable as a PWA\n \n ## Project Structure\n \n ```\n-.\n-├── src/                 # TypeScript source files\n-│   └── app.ts           # Main app logic\n-├── deploy/              # GitHub Pages deployment folder (build output)\n-│   ├── index.html       # Main HTML file with PWA meta tags\n-│   ├── manifest.json    # PWA manifest configuration\n-│   ├── sw.js            # Service Worker for offline functionality\n-│   ├── app.js           # Compiled from src/app.ts\n-│   ├── styles.css       # Styling\n-│   └── icons/           # App icons\n-├── .github/workflows/   # GitHub Actions for deployment\n-├── tsconfig.json        # TypeScript configuration\n-├── package.json         # npm dependencies and scripts\n-└── LICENSE              # License file\n+src/\n+  constants.ts           # Shared game constants\n+  app.ts                 # PWA setup and game initialization\n+  game/\n+    HeatGame.ts          # Core game logic\n+    HeatGame.test.ts     # Unit tests\n+    HeatGameRenderer.ts  # Canvas rendering\n+deploy/                  # Build output (GitHub Pages)\n+e2e/                     # End-to-end tests\n ```\n \n-## Local Development\n-\n-1. Install dependencies:\n-   ```bash\n-   npm install\n-   ```\n-\n-2. Build and serve:\n-   ```bash\n-   # Build once and serve\n-   npm run serve\n-\n-   # Or: watch mode with live server (recommended for development)\n-   npm run dev\n-   ```\n-\n-3. Open your browser and navigate to `http://localhost:3000`\n-\n-4. The PWA should be installable (look for the install button in your browser)\n-\n-## Build Commands\n+## Development\n \n ```bash\n-npm run build    # Compile TypeScript to deploy/\n-npm run watch    # Watch mode - recompile on changes\n-npm run serve    # Build + start local server\n-npm run dev      # Watch + serve concurrently\n+npm install      # Install dependencies\n+npm run build    # Compile TypeScript\n+npm test         # Run unit tests\n+npm run dev      # Build + serve with hot reload\n ```\n \n-## Development\n-\n-The TypeScript source is in `src/`. The compiled JavaScript goes to `deploy/`, which is served by GitHub Pages.\n-\n-### Next Steps\n-\n-- Implement game logic\n-- Add game state management\n-- Create resource generation mechanics\n-- Add upgrade systems\n-- Implement save/load functionality\n-\n ## Browser Support\n \n-Works in all modern browsers that support:\n-- Service Workers\n-- Web App Manifest\n-- ES6+ JavaScript\n-\n-## License\n-\n-See LICENSE file for details.\n+Works in all modern browsers with Service Worker support.\ndiff --git a/src/app.ts b/src/app.ts\nindex 234e0e1..f45544c 100644\n--- a/src/app.ts\n+++ b/src/app.ts\n@@ -1,5 +1,6 @@\n import { HeatGame, StructureType } from './game/HeatGame.js';\n import { HeatGameRenderer } from './game/HeatGameRenderer.js';\n+import { CELL_SIZE, GRID_PADDING, TICK_INTERVAL } from './constants.js';\n \n // PWA Install Prompt interface (not in standard lib.dom.d.ts)\n interface BeforeInstallPromptEvent extends Event {\n@@ -55,7 +56,6 @@ if ('serviceWorker' in navigator) {\n   window.addEventListener('load', () => {\n     navigator.serviceWorker.register('./sw.js')\n       .then((registration) => {\n-        console.log('Service Worker registered:', registration.scope);\n         updatePWAStatus('Registered');\n \n         // Check for updates on registration\n@@ -63,12 +63,8 @@ if ('serviceWorker' in navigator) {\n           const newWorker = registration.installing;\n           if (!newWorker) return;\n \n-          console.log('SW: Update found, new worker installing...');\n-\n           newWorker.addEventListener('statechange', () => {\n             if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {\n-              // New SW is installed but waiting\n-              console.log('SW: New version available');\n               waitingServiceWorker = newWorker;\n               showUpdateButton();\n               updatePWAStatus('Update available');\n@@ -84,15 +80,12 @@ if ('serviceWorker' in navigator) {\n         }\n       })\n       .catch((error) => {\n-        console.error('Service Worker registration failed:', error);\n+        console.warn('Service Worker registration failed:', error);\n         updatePWAStatus('Registration failed');\n       });\n \n     // When new SW takes over, show reload banner instead of auto-reloading\n-    navigator.serviceWorker.addEventListener('controllerchange', () => {\n-      console.log('SW: Controller changed, showing reload banner');\n-      showReloadBanner();\n-    });\n+    navigator.serviceWorker.addEventListener('controllerchange', showReloadBanner);\n   });\n }\n \n@@ -166,8 +159,6 @@ if (installButton) {\n     await deferredPrompt.prompt();\n     const { outcome } = await deferredPrompt.userChoice;\n \n-    console.log(`User response to install prompt: ${outcome}`);\n-\n     if (outcome === 'accepted') {\n       updatePWAStatus('Installed');\n     }\n@@ -180,7 +171,6 @@ if (installButton) {\n }\n \n window.addEventListener('appinstalled', () => {\n-  console.log('PWA was installed');\n   updatePWAStatus('Installed');\n   deferredPrompt = null;\n });\n@@ -194,63 +184,78 @@ window.addEventListener('load', () => {\n   }\n });\n \n-// ============================================\n-// Game Initialization\n-// ============================================\n-\n function initGame(): void {\n   if (!canvas) {\n-    console.error('Game canvas not found');\n-    return;\n+    throw new Error('Game canvas element not found');\n   }\n \n-  // Create game instance\n   const game = new HeatGame(500);\n-\n-  // Create renderer\n   const renderer = new HeatGameRenderer(game, canvas, {\n-    cellSize: 28,\n-    gridPadding: 8,\n+    cellSize: CELL_SIZE,\n+    gridPadding: GRID_PADDING,\n   });\n \n-  // Setup UI if container exists\n   if (gameUI) {\n     renderer.createUI(gameUI);\n   }\n \n-  // Handle cell clicks\n   renderer.onCellClick((x, y, button) => {\n     if (button === 0) {\n-      // Left click - build selected structure\n       const structure = renderer.getSelectedStructure();\n       if (game.canBuild(x, y, structure)) {\n         game.build(x, y, structure);\n       }\n     } else if (button === 2) {\n-      // Right click - demolish\n       game.demolish(x, y);\n     }\n   });\n \n-  // Game loop\n-  const TICK_INTERVAL = 100; // ms per tick\n   let lastTick = 0;\n+  let running = true;\n \n   function gameLoop(timestamp: number): void {\n-    if (timestamp - lastTick >= TICK_INTERVAL) {\n-      game.tick();\n-      lastTick = timestamp;\n-    }\n+    if (!running) return;\n \n-    renderer.render();\n-    renderer.updateUI();\n-    requestAnimationFrame(gameLoop);\n+    try {\n+      if (timestamp - lastTick >= TICK_INTERVAL) {\n+        game.tick();\n+        lastTick = timestamp;\n+      }\n+      renderer.render();\n+      renderer.updateUI();\n+      requestAnimationFrame(gameLoop);\n+    } catch (error) {\n+      running = false;\n+      handleGameCrash(error, game);\n+    }\n   }\n \n-  // Start the game loop\n   requestAnimationFrame(gameLoop);\n+}\n \n-  console.log('Heat Management Game initialized');\n+function handleGameCrash(error: unknown, game: HeatGame): void {\n+  const state = {\n+    money: game.getMoney(),\n+    ticks: game.getTickCount(),\n+    meltdowns: game.getMeltdownCount(),\n+    totalPower: game.getTotalPowerGenerated(),\n+    grid: game.getGridSnapshot(),\n+  };\n+\n+  console.error('Game crashed:', error);\n+  console.error('Game state at crash:', JSON.stringify(state, null, 2));\n+\n+  const banner = document.createElement('div');\n+  banner.style.cssText = `\n+    position: fixed; top: 0; left: 0; right: 0;\n+    background: #d32f2f; color: white; padding: 16px;\n+    font-family: monospace; z-index: 10000;\n+  `;\n+  banner.innerHTML = `\n+    <strong>Game crashed!</strong> ${error instanceof Error ? error.message : String(error)}\n+    <br><small>Check console for details. Refresh to restart.</small>\n+  `;\n+  document.body.prepend(banner);\n }\n \n // Start game when DOM is ready\ndiff --git a/src/constants.ts b/src/constants.ts\nnew file mode 100644\nindex 0000000..a9d586b\n--- /dev/null\n+++ b/src/constants.ts\n@@ -0,0 +1,8 @@\n+/**\n+ * Shared game constants\n+ */\n+\n+export const GRID_SIZE = 16;\n+export const CELL_SIZE = 28;\n+export const GRID_PADDING = 8;\n+export const TICK_INTERVAL = 100; // ms per tick\ndiff --git a/src/game/HeatGame.test.ts b/src/game/HeatGame.test.ts\nindex 0129af4..a27b0ee 100644\n--- a/src/game/HeatGame.test.ts\n+++ b/src/game/HeatGame.test.ts\n@@ -7,11 +7,32 @@ import {\n   GameEvent,\n } from './HeatGame.js';\n \n+/**\n+ * Build a heat trap that causes meltdown - 2 fuel rods surrounded by insulation\n+ */\n+function buildMeltdownTrap(game: HeatGame, centerX = 8, centerY = 8): void {\n+  game.build(centerX, centerY, StructureType.FuelRod);\n+  game.build(centerX, centerY + 1, StructureType.FuelRod);\n+  // Surround with insulation to trap heat\n+  for (const [dx, dy] of [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [1, 1], [-1, 2], [0, 2], [1, 2]]) {\n+    game.build(centerX + dx, centerY + dy, StructureType.InsulationPlate);\n+  }\n+}\n+\n+/**\n+ * Run ticks until meltdown occurs or max iterations reached\n+ */\n+function runUntilMeltdown(game: HeatGame, maxTicks = 500): void {\n+  for (let i = 0; i < maxTicks && game.getMeltdownCount() === 0; i++) {\n+    game.tick();\n+  }\n+}\n+\n describe('HeatGame', () => {\n   let game: HeatGame;\n \n   beforeEach(() => {\n-    game = new HeatGame(1000); // Start with 1000 money for testing\n+    game = new HeatGame(1000);\n   });\n \n   describe('initialization', () => {\n@@ -279,55 +300,16 @@ describe('HeatGame', () => {\n \n   describe('meltdown', () => {\n     it('should trigger meltdown when fuel rod overheats', () => {\n-      // Create fuel rods in the center completely surrounded by insulation to trap heat\n-      // This prevents heat from escaping to the environment\n-      game.build(8, 8, StructureType.FuelRod);\n-      game.build(8, 9, StructureType.FuelRod); // Second fuel rod for more heat\n-      // Surround with insulation to trap heat\n-      game.build(7, 7, StructureType.InsulationPlate);\n-      game.build(8, 7, StructureType.InsulationPlate);\n-      game.build(9, 7, StructureType.InsulationPlate);\n-      game.build(7, 8, StructureType.InsulationPlate);\n-      game.build(9, 8, StructureType.InsulationPlate);\n-      game.build(7, 9, StructureType.InsulationPlate);\n-      game.build(9, 9, StructureType.InsulationPlate);\n-      game.build(7, 10, StructureType.InsulationPlate);\n-      game.build(8, 10, StructureType.InsulationPlate);\n-      game.build(9, 10, StructureType.InsulationPlate);\n-\n-      // Run many ticks until meltdown\n-      for (let i = 0; i < 500; i++) {\n-        game.tick();\n-        if (game.getMeltdownCount() > 0) break;\n-      }\n-\n+      buildMeltdownTrap(game);\n+      runUntilMeltdown(game);\n       expect(game.getMeltdownCount()).toBe(1);\n     });\n \n     it('should clear all structures on meltdown', () => {\n-      // Same setup as above\n-      game.build(8, 8, StructureType.FuelRod);\n-      game.build(8, 9, StructureType.FuelRod);\n-      game.build(7, 7, StructureType.InsulationPlate);\n-      game.build(8, 7, StructureType.InsulationPlate);\n-      game.build(9, 7, StructureType.InsulationPlate);\n-      game.build(7, 8, StructureType.InsulationPlate);\n-      game.build(9, 8, StructureType.InsulationPlate);\n-      game.build(7, 9, StructureType.InsulationPlate);\n-      game.build(9, 9, StructureType.InsulationPlate);\n-      game.build(7, 10, StructureType.InsulationPlate);\n-      game.build(8, 10, StructureType.InsulationPlate);\n-      game.build(9, 10, StructureType.InsulationPlate);\n-      // Add a structure far away that should also be destroyed\n-      game.build(15, 15, StructureType.Ventilator);\n-\n-      // Run until meltdown\n-      for (let i = 0; i < 500; i++) {\n-        game.tick();\n-        if (game.getMeltdownCount() > 0) break;\n-      }\n+      buildMeltdownTrap(game);\n+      game.build(15, 15, StructureType.Ventilator); // Far away structure\n+      runUntilMeltdown(game);\n \n-      // All structures should be gone\n       const grid = game.getGridSnapshot();\n       for (let y = 0; y < GRID_SIZE; y++) {\n         for (let x = 0; x < GRID_SIZE; x++) {\n@@ -337,38 +319,18 @@ describe('HeatGame', () => {\n     });\n \n     it('should keep money after meltdown', () => {\n-      // Earn some money first with a safe setup\n+      // Earn money with a safe setup first\n       game.build(2, 8, StructureType.FuelRod);\n       game.build(2, 9, StructureType.Turbine);\n       game.build(2, 10, StructureType.Substation);\n       game.build(2, 7, StructureType.Ventilator);\n \n-      for (let i = 0; i < 30; i++) {\n-        game.tick();\n-      }\n-\n+      for (let i = 0; i < 30; i++) game.tick();\n       const moneyBeforeMeltdown = game.getMoney();\n \n-      // Now cause meltdown with trapped fuel rods in center\n-      game.build(8, 8, StructureType.FuelRod);\n-      game.build(8, 9, StructureType.FuelRod);\n-      game.build(7, 7, StructureType.InsulationPlate);\n-      game.build(8, 7, StructureType.InsulationPlate);\n-      game.build(9, 7, StructureType.InsulationPlate);\n-      game.build(7, 8, StructureType.InsulationPlate);\n-      game.build(9, 8, StructureType.InsulationPlate);\n-      game.build(7, 9, StructureType.InsulationPlate);\n-      game.build(9, 9, StructureType.InsulationPlate);\n-      game.build(7, 10, StructureType.InsulationPlate);\n-      game.build(8, 10, StructureType.InsulationPlate);\n-      game.build(9, 10, StructureType.InsulationPlate);\n-\n-      for (let i = 0; i < 500; i++) {\n-        game.tick();\n-        if (game.getMeltdownCount() > 0) break;\n-      }\n+      buildMeltdownTrap(game);\n+      runUntilMeltdown(game);\n \n-      // Money should be preserved (might have earned a bit more before meltdown)\n       expect(game.getMoney()).toBeGreaterThanOrEqual(moneyBeforeMeltdown - 500);\n     });\n \n@@ -376,26 +338,10 @@ describe('HeatGame', () => {\n       const events: GameEvent[] = [];\n       game.addEventListener((event) => events.push(event));\n \n-      game.build(8, 8, StructureType.FuelRod);\n-      game.build(8, 9, StructureType.FuelRod);\n-      game.build(7, 7, StructureType.InsulationPlate);\n-      game.build(8, 7, StructureType.InsulationPlate);\n-      game.build(9, 7, StructureType.InsulationPlate);\n-      game.build(7, 8, StructureType.InsulationPlate);\n-      game.build(9, 8, StructureType.InsulationPlate);\n-      game.build(7, 9, StructureType.InsulationPlate);\n-      game.build(9, 9, StructureType.InsulationPlate);\n-      game.build(7, 10, StructureType.InsulationPlate);\n-      game.build(8, 10, StructureType.InsulationPlate);\n-      game.build(9, 10, StructureType.InsulationPlate);\n-\n-      for (let i = 0; i < 500; i++) {\n-        game.tick();\n-        if (game.getMeltdownCount() > 0) break;\n-      }\n+      buildMeltdownTrap(game);\n+      runUntilMeltdown(game);\n \n-      const meltdownEvents = events.filter(e => e.type === 'meltdown');\n-      expect(meltdownEvents.length).toBe(1);\n+      expect(events.filter(e => e.type === 'meltdown')).toHaveLength(1);\n     });\n   });\n \ndiff --git a/src/game/HeatGame.ts b/src/game/HeatGame.ts\nindex a76c740..6a1182c 100644\n--- a/src/game/HeatGame.ts\n+++ b/src/game/HeatGame.ts\n@@ -1,15 +1,11 @@\n /**\n  * Heat Management Game - Core Game Logic\n- *\n- * This class handles all game state and simulation:\n- * - 16x16 grid management\n- * - Heat transfer calculations\n- * - Structure placement and destruction\n- * - Power generation and economy\n- * - Meltdown detection\n  */\n \n-export const GRID_SIZE = 16;\n+import { GRID_SIZE } from '../constants.js';\n+\n+// Re-export for backward compatibility\n+export { GRID_SIZE };\n \n export enum StructureType {\n   Empty = 'empty',\ndiff --git a/src/game/HeatGameRenderer.ts b/src/game/HeatGameRenderer.ts\nindex 9faef05..a000fea 100644\n--- a/src/game/HeatGameRenderer.ts\n+++ b/src/game/HeatGameRenderer.ts\n@@ -1,11 +1,5 @@\n /**\n  * Heat Management Game - UI/Rendering\n- *\n- * This class handles all visual presentation:\n- * - Grid rendering with heat visualization\n- * - Structure sprites/icons\n- * - UI panels (money, stats, build menu)\n- * - Animations and visual effects\n  */\n \n import {\n@@ -72,9 +66,14 @@ export class HeatGameRenderer {\n   private buildMenu: HTMLElement | null = null;\n \n   constructor(game: HeatGame, canvas: HTMLCanvasElement, config: Partial<RenderConfig> = {}) {\n+    const ctx = canvas.getContext('2d');\n+    if (!ctx) {\n+      throw new Error('Failed to get 2D canvas context');\n+    }\n+\n     this.game = game;\n     this.canvas = canvas;\n-    this.ctx = canvas.getContext('2d')!;\n+    this.ctx = ctx;\n     this.config = { ...DEFAULT_RENDER_CONFIG, ...config };\n \n     this.setupCanvas();\n@@ -359,9 +358,6 @@ export class HeatGameRenderer {\n   }\n \n   private showMeltdownAnimation(): void {\n-    // Flash the canvas red\n-    const originalFill = this.ctx.fillStyle;\n-\n     let flashes = 0;\n     const flashInterval = setInterval(() => {\n       if (flashes >= 6) {\n@@ -379,8 +375,6 @@ export class HeatGameRenderer {\n \n       flashes++;\n     }, 100);\n-\n-    this.ctx.fillStyle = originalFill;\n   }\n \n   // Configuration",
+          "actualWorkers": 1
+        },
+        "id": "chromium",
+        "name": "chromium",
+        "testDir": "/home/runner/work/claudetest123/claudetest123/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 30000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "html",
+        {
+          "outputFolder": "playwright-report"
+        }
+      ],
+      [
+        "list",
+        null
+      ],
+      [
+        "json",
+        {
+          "outputFile": "test-results/results.json"
+        }
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "runAgents": "none",
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.58.0",
+    "workers": 1,
+    "webServer": {
+      "command": "npm run serve",
+      "url": "http://localhost:3000",
+      "reuseExistingServer": false,
+      "timeout": 120000
+    }
+  },
+  "suites": [
+    {
+      "title": "heat-game.spec.ts",
+      "file": "heat-game.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Heat Game E2E Tests",
+          "file": "heat-game.spec.ts",
+          "line": 40,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should load the game and display initial state",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 462,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-30T21:43:31.510Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-2428b-e-and-display-initial-state-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-2428b-e-and-display-initial-state-chromium/attachments/browser-logs-252e98eebb6d2a6fd5612fd184955e74f7d8fa0e.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-1f7f90ca45f76c134f4d",
+              "file": "heat-game.spec.ts",
+              "line": 85,
+              "column": 3
+            },
+            {
+              "title": "should place a Fuel Rod on the grid",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 600,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-30T21:43:33.308Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-05fff-lace-a-Fuel-Rod-on-the-grid-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-05fff-lace-a-Fuel-Rod-on-the-grid-chromium/attachments/browser-logs-daa597c1e58cdd3735064670bc098a56f535a7d5.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-a31bde006f3c29450fad",
+              "file": "heat-game.spec.ts",
+              "line": 115,
+              "column": 3
+            },
+            {
+              "title": "should place multiple structures and observe heat dynamics",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1202,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-30T21:43:33.923Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-edba4-s-and-observe-heat-dynamics-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-edba4-s-and-observe-heat-dynamics-chromium/attachments/browser-logs-a9526112523c68aa24fe78334be3ec2af4a1ba62.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-2ed04ebe32d9c471053a",
+              "file": "heat-game.spec.ts",
+              "line": 145,
+              "column": 3
+            },
+            {
+              "title": "should demolish a structure with right-click",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 636,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-30T21:43:35.139Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-53724--structure-with-right-click-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-53724--structure-with-right-click-chromium/attachments/browser-logs-d97b4f4e87a5cc31e1b5dee61d33b7cf6ee7bb2f.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-ff211d87a2ad19067056",
+              "file": "heat-game.spec.ts",
+              "line": 182,
+              "column": 3
+            },
+            {
+              "title": "should build a power generation setup",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1671,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-30T21:43:35.787Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-206ae-ld-a-power-generation-setup-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-206ae-ld-a-power-generation-setup-chromium/attachments/browser-logs-6db27ca250b3a1a4083663dd5a90aeedb0e1a354.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-abe0096aa1a1c45a3b34",
+              "file": "heat-game.spec.ts",
+              "line": 210,
+              "column": 3
+            },
+            {
+              "title": "should show heat buildup with clustered fuel rods",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1574,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-30T21:43:37.470Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-1ce31-up-with-clustered-fuel-rods-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-1ce31-up-with-clustered-fuel-rods-chromium/attachments/browser-logs-4108f70a5376472a80710ba1c287f526e1cfc9b4.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-ac87d21624a439db98b8",
+              "file": "heat-game.spec.ts",
+              "line": 247,
+              "column": 3
+            },
+            {
+              "title": "should not allow building without sufficient money",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 568,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-30T21:43:39.058Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-ee0f6-ng-without-sufficient-money-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-ee0f6-ng-without-sufficient-money-chromium/attachments/browser-logs-67852c21b9cbe344288f7cfb81aa3e88ded21441.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-b096005e15a85f67c2a8",
+              "file": "heat-game.spec.ts",
+              "line": 285,
+              "column": 3
+            },
+            {
+              "title": "should handle rapid clicking on the grid",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1203,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-30T21:43:39.641Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-c664c--rapid-clicking-on-the-grid-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-c664c--rapid-clicking-on-the-grid-chromium/attachments/browser-logs-8830c25d0c901f07d14f24299509ec6ff3fc0a0b.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-1b3f7a34798ed668be9c",
+              "file": "heat-game.spec.ts",
+              "line": 316,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-01-30T21:43:25.116Z",
+    "duration": 15787.938000000002,
+    "expected": 8,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}
