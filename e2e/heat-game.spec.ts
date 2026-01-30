@@ -7,23 +7,6 @@ const GRID_SIZE = 16;
 const CELL_SIZE = 32;
 const GRID_PADDING = 10;
 
-// Structure types for build menu selection
-const STRUCTURES = {
-  FuelRod: 'FuelRod',
-  Ventilator: 'Ventilator',
-  HeatExchanger: 'HeatExchanger',
-  Battery: 'Battery',
-  InsulationPlate: 'InsulationPlate',
-  Turbine: 'Turbine',
-  Substation: 'Substation',
-};
-
-// Test fixtures for capturing logs
-interface TestContext {
-  consoleLogs: string[];
-  page: Page;
-}
-
 /**
  * Calculate canvas click coordinates for a grid cell
  */
@@ -46,6 +29,12 @@ async function saveLogs(testInfo: any, logs: string[], filename: string) {
   const logFile = path.join(logsDir, `${testInfo.title.replace(/\s+/g, '-')}-${filename}.log`);
   fs.writeFileSync(logFile, logs.join('\n'));
   await testInfo.attach(filename, { path: logFile, contentType: 'text/plain' });
+}
+
+// Ensure screenshots directory exists before tests
+const screenshotsDir = 'test-results/screenshots';
+if (!fs.existsSync(screenshotsDir)) {
+  fs.mkdirSync(screenshotsDir, { recursive: true });
 }
 
 test.describe('Heat Game E2E Tests', () => {
@@ -125,7 +114,7 @@ test.describe('Heat Game E2E Tests', () => {
   test('should place a Fuel Rod on the grid', async ({ page }, testInfo) => {
     const canvas = page.locator('#game-canvas');
 
-    // Click on the FuelRod button to select it (should be selected by default)
+    // Click on the FuelRod button to select it
     const fuelRodButton = page.locator('.heat-game-build-menu button', { hasText: 'FuelRod' });
     await fuelRodButton.click();
 
@@ -138,8 +127,8 @@ test.describe('Heat Game E2E Tests', () => {
     const clickPos = getCellClickPosition(5, 5);
     await canvas.click({ position: clickPos });
 
-    // Wait a moment for the game to process
-    await page.waitForTimeout(200);
+    // Wait briefly for the game to process
+    await page.waitForTimeout(100);
 
     await page.screenshot({
       path: `test-results/screenshots/${testInfo.title.replace(/\s+/g, '-')}-03-fuel-rod-placed.png`,
@@ -154,67 +143,40 @@ test.describe('Heat Game E2E Tests', () => {
   test('should place multiple structures and observe heat dynamics', async ({ page }, testInfo) => {
     const canvas = page.locator('#game-canvas');
 
-    // Step 1: Place a Fuel Rod at (7, 7) - center-ish
+    // Place a Fuel Rod at (7, 7)
     const fuelRodButton = page.locator('.heat-game-build-menu button', { hasText: 'FuelRod' });
     await fuelRodButton.click();
     await canvas.click({ position: getCellClickPosition(7, 7) });
-    await page.waitForTimeout(100);
 
-    await page.screenshot({
-      path: `test-results/screenshots/${testInfo.title.replace(/\s+/g, '-')}-02-placed-fuel-rod.png`,
-      fullPage: true
-    });
-
-    // Step 2: Place a Ventilator next to it at (6, 7) for cooling
+    // Place a Ventilator next to it at (6, 7) for cooling
     const ventilatorButton = page.locator('.heat-game-build-menu button', { hasText: 'Ventilator' });
     await ventilatorButton.click();
     await canvas.click({ position: getCellClickPosition(6, 7) });
-    await page.waitForTimeout(100);
 
-    await page.screenshot({
-      path: `test-results/screenshots/${testInfo.title.replace(/\s+/g, '-')}-03-placed-ventilator.png`,
-      fullPage: true
-    });
-
-    // Step 3: Place a Turbine at (8, 7) to convert heat to power
+    // Place a Turbine at (8, 7) to convert heat to power
     const turbineButton = page.locator('.heat-game-build-menu button', { hasText: 'Turbine' });
     await turbineButton.click();
     await canvas.click({ position: getCellClickPosition(8, 7) });
-    await page.waitForTimeout(100);
 
-    await page.screenshot({
-      path: `test-results/screenshots/${testInfo.title.replace(/\s+/g, '-')}-04-placed-turbine.png`,
-      fullPage: true
-    });
-
-    // Step 4: Place a Substation at (9, 7) to sell power
+    // Place a Substation at (9, 7) to sell power
     const substationButton = page.locator('.heat-game-build-menu button', { hasText: 'Substation' });
     await substationButton.click();
     await canvas.click({ position: getCellClickPosition(9, 7) });
-    await page.waitForTimeout(100);
 
     await page.screenshot({
-      path: `test-results/screenshots/${testInfo.title.replace(/\s+/g, '-')}-05-placed-substation.png`,
+      path: `test-results/screenshots/${testInfo.title.replace(/\s+/g, '-')}-02-structures-placed.png`,
       fullPage: true
     });
 
-    // Wait for some game ticks to observe heat buildup
-    await page.waitForTimeout(1000);
+    // Wait briefly for game ticks
+    await page.waitForTimeout(500);
 
     await page.screenshot({
-      path: `test-results/screenshots/${testInfo.title.replace(/\s+/g, '-')}-06-after-1-second.png`,
+      path: `test-results/screenshots/${testInfo.title.replace(/\s+/g, '-')}-03-after-ticks.png`,
       fullPage: true
     });
 
-    // Wait more to see power generation
-    await page.waitForTimeout(2000);
-
-    await page.screenshot({
-      path: `test-results/screenshots/${testInfo.title.replace(/\s+/g, '-')}-07-after-3-seconds.png`,
-      fullPage: true
-    });
-
-    // Verify stats show power generation
+    // Verify stats are visible
     const statsDisplay = page.locator('.heat-game-stats');
     await expect(statsDisplay).toBeVisible();
   });
@@ -226,7 +188,6 @@ test.describe('Heat Game E2E Tests', () => {
     const ventilatorButton = page.locator('.heat-game-build-menu button', { hasText: 'Ventilator' });
     await ventilatorButton.click();
     await canvas.click({ position: getCellClickPosition(3, 3) });
-    await page.waitForTimeout(100);
 
     // Check money after placing ($500 - $50 = $450)
     const moneyDisplay = page.locator('.heat-game-money');
@@ -239,7 +200,6 @@ test.describe('Heat Game E2E Tests', () => {
 
     // Right-click to demolish
     await canvas.click({ position: getCellClickPosition(3, 3), button: 'right' });
-    await page.waitForTimeout(100);
 
     await page.screenshot({
       path: `test-results/screenshots/${testInfo.title.replace(/\s+/g, '-')}-03-after-demolish.png`,
@@ -250,29 +210,21 @@ test.describe('Heat Game E2E Tests', () => {
     await expect(moneyDisplay).toContainText('450');
   });
 
-  test('should build a complete power generation setup', async ({ page }, testInfo) => {
+  test('should build a power generation setup', async ({ page }, testInfo) => {
     const canvas = page.locator('#game-canvas');
 
-    // Build a small power plant setup:
-    // Row 7: [Vent] [FuelRod] [Turbine] [Substation]
-    // Row 8: [Vent] [FuelRod] [Turbine]
-
+    // Build a small power plant setup
     const structures = [
       { type: 'Ventilator', x: 5, y: 7 },
       { type: 'FuelRod', x: 6, y: 7 },
       { type: 'Turbine', x: 7, y: 7 },
       { type: 'Substation', x: 8, y: 7 },
-      { type: 'Ventilator', x: 5, y: 8 },
-      { type: 'FuelRod', x: 6, y: 8 },
-      { type: 'Turbine', x: 7, y: 8 },
     ];
 
-    for (let i = 0; i < structures.length; i++) {
-      const s = structures[i];
+    for (const s of structures) {
       const button = page.locator('.heat-game-build-menu button', { hasText: s.type });
       await button.click();
       await canvas.click({ position: getCellClickPosition(s.x, s.y) });
-      await page.waitForTimeout(50);
     }
 
     await page.screenshot({
@@ -280,38 +232,26 @@ test.describe('Heat Game E2E Tests', () => {
       fullPage: true
     });
 
-    // Let the simulation run for 5 seconds
-    await page.waitForTimeout(5000);
+    // Let the simulation run briefly
+    await page.waitForTimeout(1000);
 
     await page.screenshot({
-      path: `test-results/screenshots/${testInfo.title.replace(/\s+/g, '-')}-03-after-5-seconds.png`,
+      path: `test-results/screenshots/${testInfo.title.replace(/\s+/g, '-')}-03-after-simulation.png`,
       fullPage: true
     });
 
-    // Verify power generation has occurred
+    // Verify stats are visible and updating
     const statsDisplay = page.locator('.heat-game-stats');
     const statsText = await statsDisplay.textContent();
+    consoleLogs.push(`[TEST] Stats after simulation: ${statsText}`);
 
-    // Log the stats for debugging
-    consoleLogs.push(`[TEST] Stats after 5 seconds: ${statsText}`);
-
-    // Take one more screenshot after 10 seconds total
-    await page.waitForTimeout(5000);
-
-    await page.screenshot({
-      path: `test-results/screenshots/${testInfo.title.replace(/\s+/g, '-')}-04-after-10-seconds.png`,
-      fullPage: true
-    });
-
-    const finalStats = await statsDisplay.textContent();
-    consoleLogs.push(`[TEST] Final stats after 10 seconds: ${finalStats}`);
+    await expect(statsDisplay).toBeVisible();
   });
 
-  test('should trigger meltdown with excessive heat', async ({ page }, testInfo) => {
+  test('should show heat buildup with clustered fuel rods', async ({ page }, testInfo) => {
     const canvas = page.locator('#game-canvas');
 
     // Build multiple fuel rods close together without cooling
-    // This should cause a meltdown eventually
     const fuelRodPositions = [
       { x: 7, y: 7 },
       { x: 8, y: 7 },
@@ -324,7 +264,6 @@ test.describe('Heat Game E2E Tests', () => {
 
     for (const pos of fuelRodPositions) {
       await canvas.click({ position: getCellClickPosition(pos.x, pos.y) });
-      await page.waitForTimeout(50);
     }
 
     await page.screenshot({
@@ -332,48 +271,32 @@ test.describe('Heat Game E2E Tests', () => {
       fullPage: true
     });
 
-    // Wait for heat to build up (may take a while to meltdown)
-    // Take periodic screenshots
-    for (let i = 1; i <= 10; i++) {
-      await page.waitForTimeout(2000);
+    // Wait briefly to observe heat buildup
+    await page.waitForTimeout(1000);
 
-      const statsDisplay = page.locator('.heat-game-stats');
-      const statsText = await statsDisplay.textContent();
-      consoleLogs.push(`[TEST] Stats at ${i * 2} seconds: ${statsText}`);
+    const statsDisplay = page.locator('.heat-game-stats');
+    const statsText = await statsDisplay.textContent();
+    consoleLogs.push(`[TEST] Stats with heat buildup: ${statsText}`);
 
-      // Check if meltdown occurred
-      if (statsText && statsText.includes('Meltdowns: 1')) {
-        await page.screenshot({
-          path: `test-results/screenshots/${testInfo.title.replace(/\s+/g, '-')}-03-meltdown-occurred.png`,
-          fullPage: true
-        });
-        consoleLogs.push(`[TEST] Meltdown detected at ${i * 2} seconds!`);
-        break;
-      }
+    await page.screenshot({
+      path: `test-results/screenshots/${testInfo.title.replace(/\s+/g, '-')}-03-heat-building.png`,
+      fullPage: true
+    });
 
-      if (i % 3 === 0) {
-        await page.screenshot({
-          path: `test-results/screenshots/${testInfo.title.replace(/\s+/g, '-')}-03-heat-building-${i * 2}s.png`,
-          fullPage: true
-        });
-      }
-    }
+    // Verify the game is still running
+    await expect(statsDisplay).toBeVisible();
   });
 
   test('should not allow building without sufficient money', async ({ page }, testInfo) => {
     const canvas = page.locator('#game-canvas');
 
-    // Try to build expensive structures until we run out of money
-    // Starting with $500
-    // Substation costs $250
+    // Substation costs $250, starting with $500
     const substationButton = page.locator('.heat-game-build-menu button', { hasText: 'Substation' });
     await substationButton.click();
 
     // Build 2 substations ($500 total)
     await canvas.click({ position: getCellClickPosition(1, 1) });
-    await page.waitForTimeout(50);
     await canvas.click({ position: getCellClickPosition(2, 1) });
-    await page.waitForTimeout(50);
 
     await page.screenshot({
       path: `test-results/screenshots/${testInfo.title.replace(/\s+/g, '-')}-02-spent-all-money.png`,
@@ -386,7 +309,6 @@ test.describe('Heat Game E2E Tests', () => {
 
     // Try to build another structure - should fail silently
     await canvas.click({ position: getCellClickPosition(3, 1) });
-    await page.waitForTimeout(100);
 
     await page.screenshot({
       path: `test-results/screenshots/${testInfo.title.replace(/\s+/g, '-')}-03-cannot-build.png`,
@@ -404,20 +326,18 @@ test.describe('Heat Game E2E Tests', () => {
     const insulationButton = page.locator('.heat-game-build-menu button', { hasText: 'InsulationPlate' });
     await insulationButton.click();
 
-    // Rapidly click multiple cells
+    // Rapidly click multiple cells (limited to fit budget)
     const clicks = [];
-    for (let x = 0; x < 5; x++) {
-      for (let y = 0; y < 3; y++) {
+    for (let x = 0; x < 4; x++) {
+      for (let y = 0; y < 4; y++) {
         clicks.push(getCellClickPosition(x, y));
       }
     }
 
     // Click rapidly
     for (const pos of clicks) {
-      await canvas.click({ position: pos, delay: 10 });
+      await canvas.click({ position: pos, delay: 5 });
     }
-
-    await page.waitForTimeout(500);
 
     await page.screenshot({
       path: `test-results/screenshots/${testInfo.title.replace(/\s+/g, '-')}-02-rapid-clicks-result.png`,
@@ -428,12 +348,4 @@ test.describe('Heat Game E2E Tests', () => {
     const statsDisplay = page.locator('.heat-game-stats');
     await expect(statsDisplay).toBeVisible();
   });
-});
-
-// Ensure screenshots directory exists
-test.beforeAll(async () => {
-  const screenshotsDir = 'test-results/screenshots';
-  if (!fs.existsSync(screenshotsDir)) {
-    fs.mkdirSync(screenshotsDir, { recursive: true });
-  }
 });
