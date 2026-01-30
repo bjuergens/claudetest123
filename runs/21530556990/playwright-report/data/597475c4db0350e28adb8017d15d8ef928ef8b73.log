@@ -1,0 +1,3 @@
+[LOG] 2026-01-30T21:04:12.615Z Heat Management Game initialized
+[LOG] 2026-01-30T21:04:12.645Z Service Worker registered: http://localhost:3000/
+[LOG] 2026-01-30T21:04:12.645Z SW: Update found, new worker installing...

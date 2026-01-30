@@ -1,0 +1,9 @@
+[LOG] 2026-01-30T21:04:13.254Z Heat Management Game initialized
+[LOG] 2026-01-30T21:04:13.286Z Service Worker registered: http://localhost:3000/
+[LOG] 2026-01-30T21:04:13.286Z SW: Update found, new worker installing...
+[TEST] Stats after simulation: 
+        Total Power: 15.1
+        Total Earned: $0
+        Meltdowns: 0
+        Ticks: 14
+      
