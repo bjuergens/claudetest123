@@ -6,140 +6,212 @@
 
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: #1a1a1a;
     min-height: 100vh;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    padding: 20px;
-    color: #333;
+    color: #eee;
+    overflow-x: hidden;
 }
 
-.container {
-    max-width: 600px;
-    width: 100%;
-}
-
-header {
-    text-align: center;
-    color: white;
-    margin-bottom: 30px;
-}
-
-header h1 {
-    font-size: 2.5rem;
-    margin-bottom: 10px;
-    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
-}
-
-.subtitle {
-    font-size: 1.1rem;
-    opacity: 0.9;
-}
-
-main {
+/* App Layout */
+.app-container {
     display: flex;
     flex-direction: column;
-    gap: 20px;
+    min-height: 100vh;
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 10px;
 }
 
-.card {
-    background: white;
-    border-radius: 16px;
-    padding: 24px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-    transition: transform 0.2s;
+.app-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 0;
+    border-bottom: 1px solid #333;
+    margin-bottom: 10px;
 }
 
-.card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+.app-header h1 {
+    font-size: 1.4rem;
+    color: #ff6b00;
 }
 
-.card h2 {
-    color: #667eea;
-    margin-bottom: 12px;
+.header-status {
+    font-size: 0.85rem;
+    color: #888;
 }
 
-.card h3 {
-    color: #764ba2;
-    margin-bottom: 16px;
+/* Game Container */
+.game-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    align-items: center;
 }
 
-.card p {
-    line-height: 1.6;
-    color: #666;
-    margin-bottom: 16px;
+#game-canvas {
+    border: 2px solid #333;
+    border-radius: 4px;
+    background: #1a1a1a;
+    touch-action: none;
 }
 
-.status {
-    background: #f0f4ff;
-    padding: 12px;
-    border-radius: 8px;
-    border-left: 4px solid #667eea;
+/* Game UI */
+.game-ui {
+    width: 100%;
+    max-width: 480px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
 }
 
-.status strong {
-    color: #667eea;
-}
-
-.card ul {
-    list-style: none;
-    padding: 0;
-}
-
-.card li {
-    padding: 8px 0;
-    font-size: 1rem;
-    color: #555;
-}
-
-footer {
+.heat-game-money {
+    font-size: 1.3rem;
+    font-weight: bold;
+    color: #00ff88;
     text-align: center;
-    color: white;
-    margin-top: 30px;
-    opacity: 0.9;
+    padding: 8px;
+    background: #252525;
+    border-radius: 4px;
+}
+
+.heat-game-stats {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+    padding: 10px;
+    background: #252525;
+    border-radius: 4px;
+    font-size: 0.9rem;
+}
+
+.heat-game-stats div {
+    color: #aaa;
+}
+
+.heat-game-build-menu {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 10px;
+    background: #252525;
+    border-radius: 4px;
+}
+
+.heat-game-build-menu button {
+    flex: 1 1 calc(50% - 4px);
+    min-width: 140px;
+    padding: 10px 12px;
+    border: 2px solid #444;
+    border-radius: 4px;
+    background: #333;
+    color: #ddd;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all 0.15s;
+    text-align: left;
+}
+
+.heat-game-build-menu button:hover {
+    background: #444;
+    border-color: #666;
+}
+
+.heat-game-build-menu button.selected {
+    background: #ff6b00;
+    border-color: #ff8533;
+    color: #fff;
+}
+
+/* Footer */
+.app-footer {
+    text-align: center;
+    padding: 10px 0;
+    border-top: 1px solid #333;
+    margin-top: 10px;
+    color: #666;
+    font-size: 0.85rem;
+}
+
+/* Action Buttons (Install/Update) */
+.action-button {
+    position: fixed;
+    bottom: 20px;
+    border: none;
+    padding: 14px 24px;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    font-weight: bold;
+    cursor: pointer;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+    transition: all 0.2s;
+    z-index: 1000;
+}
+
+.action-button:hover {
+    transform: scale(1.02);
+}
+
+.action-button:active {
+    transform: scale(0.98);
 }
 
 .install-button {
-    position: fixed;
-    bottom: 20px;
     right: 20px;
-    background: #667eea;
+    background: #00aaff;
     color: white;
-    border: none;
-    padding: 16px 32px;
-    border-radius: 50px;
-    font-size: 1rem;
-    font-weight: bold;
-    cursor: pointer;
-    box-shadow: 0 4px 20px rgba(102, 126, 234, 0.4);
-    transition: all 0.3s;
 }
 
 .install-button:hover {
-    background: #5568d3;
-    transform: scale(1.05);
-    box-shadow: 0 6px 30px rgba(102, 126, 234, 0.6);
+    background: #0099ee;
 }
 
-.install-button:active {
-    transform: scale(0.95);
+.update-button {
+    left: 20px;
+    right: 20px;
+    width: calc(100% - 40px);
+    max-width: 400px;
+    margin: 0 auto;
+    background: #ff6b00;
+    color: white;
+    text-align: center;
 }
 
-@media (max-width: 600px) {
-    header h1 {
-        font-size: 2rem;
+.update-button:hover {
+    background: #ff8533;
+}
+
+/* Responsive */
+@media (max-width: 520px) {
+    .app-header h1 {
+        font-size: 1.2rem;
     }
 
-    .card {
+    .heat-game-build-menu button {
+        flex: 1 1 100%;
+        font-size: 0.9rem;
+    }
+
+    .action-button {
+        padding: 12px 20px;
+        font-size: 0.85rem;
+    }
+}
+
+@media (min-width: 600px) {
+    .app-container {
         padding: 20px;
     }
 
-    .install-button {
-        bottom: 16px;
-        right: 16px;
-        padding: 12px 24px;
-        font-size: 0.9rem;
+    .game-container {
+        flex-direction: row;
+        flex-wrap: wrap;
+        justify-content: center;
+        align-items: flex-start;
+    }
+
+    .game-ui {
+        max-width: 280px;
     }
 }

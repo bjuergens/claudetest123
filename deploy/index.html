@@ -2,52 +2,43 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="A simple idle game PWA">
-    <meta name="theme-color" content="#2196F3">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="description" content="A heat management idle game PWA">
+    <meta name="theme-color" content="#1a1a1a">
 
     <!-- PWA Meta Tags -->
     <link rel="manifest" href="manifest.json">
     <link rel="icon" type="image/svg+xml" href="icons/icon-192.svg">
     <link rel="apple-touch-icon" href="icons/icon-192.svg">
 
-    <title>Idle Game PWA</title>
+    <title>Heat Management Game</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <div class="container">
-        <header>
-            <h1>🎮 Idle Game</h1>
-            <p class="subtitle">Your Progressive Web App</p>
+    <div class="app-container">
+        <header class="app-header">
+            <h1>Heat Management</h1>
+            <div class="header-status">
+                <span id="pwa-status">Loading...</span>
+            </div>
         </header>
 
-        <main>
-            <div class="card">
-                <h2>Welcome!</h2>
-                <p>This is your idle game PWA. The basic PWA infrastructure is now set up.</p>
-                <div class="status">
-                    <span id="install-status">PWA Status: <strong id="pwa-status">Checking...</strong></span>
-                </div>
-            </div>
-
-            <div class="card">
-                <h3>PWA Features Active:</h3>
-                <ul>
-                    <li>✅ Installable as app</li>
-                    <li>✅ Works offline</li>
-                    <li>✅ Fast loading</li>
-                    <li>✅ Responsive design</li>
-                </ul>
-            </div>
+        <main class="game-container">
+            <canvas id="game-canvas"></canvas>
+            <div id="game-ui" class="game-ui"></div>
         </main>
 
-        <footer>
-            <p>Ready for game development!</p>
+        <footer class="app-footer">
+            <p>Left-click: Build | Right-click: Demolish</p>
         </footer>
     </div>
 
-    <button id="install-button" class="install-button" style="display: none;">
+    <button id="install-button" class="action-button install-button" style="display: none;">
         Install App
+    </button>
+
+    <button id="update-button" class="action-button update-button" style="display: none;">
+        Update Available - Click to Refresh
     </button>
 
     <script type="module" src="app.js"></script>
