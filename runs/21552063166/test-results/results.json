@@ -1,0 +1,512 @@
+{
+  "config": {
+    "configFile": "/home/runner/work/claudetest123/claudetest123/playwright.config.ts",
+    "rootDir": "/home/runner/work/claudetest123/claudetest123/e2e",
+    "forbidOnly": true,
+    "fullyParallel": true,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "ci": {
+        "commitHref": "https://github.com/bjuergens/claudetest123/commit/09b0699671d19cf4c1e8fbae319b6af99cd9a04e",
+        "commitHash": "09b0699671d19cf4c1e8fbae319b6af99cd9a04e",
+        "prHref": "https://github.com/bjuergens/claudetest123/pull/15",
+        "prTitle": "Add upgrade menu and tier selection for structures",
+        "prBaseHash": "311c1edf57f28370c0b2b4f4897ecc08824337af",
+        "buildHref": "https://github.com/bjuergens/claudetest123/actions/runs/21552063166"
+      },
+      "gitCommit": {
+        "shortHash": "09b0699",
+        "hash": "09b0699671d19cf4c1e8fbae319b6af99cd9a04e",
+        "subject": "Merge 627cb165606204a4ca8d4e875c08ec5dd246f7ac into 311c1edf57f28370c0b2b4f4897ecc08824337af",
+        "body": "Merge 627cb165606204a4ca8d4e875c08ec5dd246f7ac into 311c1edf57f28370c0b2b4f4897ecc08824337af\n",
+        "author": {
+          "name": "Björn Jürgens",
+          "email": "4362465+bjuergens@users.noreply.github.com",
+          "time": 1769898978000
+        },
+        "committer": {
+          "name": "GitHub",
+          "email": "noreply@github.com",
+          "time": 1769898978000
+        },
+        "branch": "HEAD"
+      },
+      "gitDiff": "diff --git a/deploy/styles.css b/deploy/styles.css\nindex 22f811d..8d215a8 100644\n--- a/deploy/styles.css\n+++ b/deploy/styles.css\n@@ -90,19 +90,58 @@ body {\n     color: #aaa;\n }\n \n+/* Menu titles */\n+.menu-title {\n+    font-size: 0.9rem;\n+    font-weight: bold;\n+    color: #888;\n+    text-transform: uppercase;\n+    letter-spacing: 0.5px;\n+    margin-bottom: 8px;\n+    padding-bottom: 4px;\n+    border-bottom: 1px solid #444;\n+}\n+\n+/* Build Menu */\n .heat-game-build-menu {\n     display: flex;\n-    flex-wrap: wrap;\n-    gap: 8px;\n+    flex-direction: column;\n+    gap: 6px;\n     padding: 10px;\n     background: #252525;\n     border-radius: 4px;\n }\n \n-.heat-game-build-menu button {\n-    flex: 1 1 calc(50% - 4px);\n-    min-width: 140px;\n-    padding: 10px 12px;\n+.build-item {\n+    display: flex;\n+    gap: 4px;\n+}\n+\n+.tier-btn {\n+    width: 32px;\n+    padding: 8px 0;\n+    border: 2px solid #444;\n+    border-radius: 4px;\n+    background: #333;\n+    color: #ddd;\n+    font-size: 1rem;\n+    font-weight: bold;\n+    cursor: pointer;\n+    transition: all 0.15s;\n+}\n+\n+.tier-btn:hover {\n+    background: #555;\n+    border-color: #666;\n+}\n+\n+.tier-btn:active {\n+    background: #666;\n+}\n+\n+.build-btn {\n+    flex: 1;\n+    padding: 8px 10px;\n     border: 2px solid #444;\n     border-radius: 4px;\n     background: #333;\n@@ -111,19 +150,222 @@ body {\n     cursor: pointer;\n     transition: all 0.15s;\n     text-align: left;\n+    display: flex;\n+    align-items: center;\n+    gap: 6px;\n }\n \n-.heat-game-build-menu button:hover {\n+.build-btn .struct-symbol {\n+    font-weight: bold;\n+    min-width: 14px;\n+}\n+\n+.build-btn .struct-name {\n+    flex: 1;\n+}\n+\n+.build-btn .struct-tier {\n+    color: #888;\n+    font-size: 0.75rem;\n+}\n+\n+.build-btn .struct-cost {\n+    color: #00ff88;\n+    font-weight: bold;\n+}\n+\n+.build-btn:hover:not(:disabled) {\n     background: #444;\n     border-color: #666;\n }\n \n-.heat-game-build-menu button.selected {\n+.build-btn.selected {\n     background: #ff6b00;\n     border-color: #ff8533;\n     color: #fff;\n }\n \n+.build-btn.selected .struct-tier,\n+.build-btn.selected .struct-cost {\n+    color: #fff;\n+}\n+\n+.build-btn:disabled,\n+.build-btn.disabled {\n+    opacity: 0.5;\n+    cursor: not-allowed;\n+}\n+\n+/* Upgrade Menu */\n+.heat-game-upgrade-menu {\n+    display: flex;\n+    flex-direction: column;\n+    gap: 6px;\n+    padding: 10px;\n+    background: #252525;\n+    border-radius: 4px;\n+    max-height: 300px;\n+    overflow-y: auto;\n+}\n+\n+.upgrade-list {\n+    display: flex;\n+    flex-direction: column;\n+    gap: 4px;\n+}\n+\n+.upgrade-item {\n+    display: flex;\n+    justify-content: space-between;\n+    align-items: center;\n+    padding: 6px 8px;\n+    background: #333;\n+    border-radius: 4px;\n+}\n+\n+.upgrade-info {\n+    display: flex;\n+    flex-direction: column;\n+    gap: 2px;\n+}\n+\n+.upgrade-name {\n+    font-size: 0.8rem;\n+    color: #ddd;\n+}\n+\n+.upgrade-level {\n+    font-size: 0.7rem;\n+    color: #888;\n+}\n+\n+.upgrade-btn {\n+    padding: 4px 10px;\n+    border: 2px solid #444;\n+    border-radius: 4px;\n+    background: #00aa66;\n+    color: #fff;\n+    font-size: 0.75rem;\n+    font-weight: bold;\n+    cursor: pointer;\n+    transition: all 0.15s;\n+}\n+\n+.upgrade-btn:hover:not(:disabled) {\n+    background: #00cc77;\n+}\n+\n+.upgrade-btn:disabled {\n+    background: #555;\n+    color: #888;\n+    cursor: not-allowed;\n+}\n+\n+/* Secret Menu */\n+.heat-game-secret-menu {\n+    display: flex;\n+    flex-direction: column;\n+    gap: 6px;\n+    padding: 10px;\n+    background: #252525;\n+    border-radius: 4px;\n+    max-height: 250px;\n+    overflow-y: auto;\n+}\n+\n+.secret-list {\n+    display: flex;\n+    flex-direction: column;\n+    gap: 6px;\n+}\n+\n+.secret-item {\n+    padding: 8px;\n+    background: #333;\n+    border-radius: 4px;\n+    border-left: 3px solid #aa00ff;\n+}\n+\n+.secret-item.purchased {\n+    border-left-color: #00ff88;\n+}\n+\n+.secret-info {\n+    display: flex;\n+    flex-direction: column;\n+    gap: 2px;\n+    margin-bottom: 6px;\n+}\n+\n+.secret-name {\n+    font-size: 0.85rem;\n+    color: #ddd;\n+    font-weight: bold;\n+}\n+\n+.secret-desc {\n+    font-size: 0.7rem;\n+    color: #888;\n+}\n+\n+.secret-actions {\n+    display: flex;\n+    justify-content: flex-end;\n+}\n+\n+.secret-btn {\n+    padding: 4px 12px;\n+    border: 2px solid #aa00ff;\n+    border-radius: 4px;\n+    background: #660099;\n+    color: #fff;\n+    font-size: 0.75rem;\n+    font-weight: bold;\n+    cursor: pointer;\n+    transition: all 0.15s;\n+}\n+\n+.secret-btn:hover:not(:disabled) {\n+    background: #880099;\n+}\n+\n+.secret-btn:disabled {\n+    opacity: 0.5;\n+    cursor: not-allowed;\n+}\n+\n+.toggle-btn {\n+    padding: 4px 12px;\n+    border: 2px solid #444;\n+    border-radius: 4px;\n+    background: #555;\n+    color: #888;\n+    font-size: 0.75rem;\n+    font-weight: bold;\n+    cursor: pointer;\n+    transition: all 0.15s;\n+}\n+\n+.toggle-btn.enabled {\n+    background: #00aa66;\n+    border-color: #00cc77;\n+    color: #fff;\n+}\n+\n+.owned {\n+    font-size: 0.75rem;\n+    color: #00ff88;\n+    font-weight: bold;\n+}\n+\n+.no-secrets {\n+    font-size: 0.8rem;\n+    color: #666;\n+    font-style: italic;\n+    text-align: center;\n+    padding: 10px;\n+}\n+\n /* Footer */\n .app-footer {\n     text-align: center;\ndiff --git a/e2e/heat-game.spec.ts b/e2e/heat-game.spec.ts\nindex 7ea1cd9..636b53d 100644\n--- a/e2e/heat-game.spec.ts\n+++ b/e2e/heat-game.spec.ts\n@@ -63,7 +63,7 @@ test.describe('Heat Game E2E Tests', () => {\n \n     // Verify we have all 6 build buttons before proceeding\n     // (FuelRod, Ventilator, HeatExchanger, Insulator, Turbine, Substation)\n-    await expect(page.locator('.heat-game-build-menu button')).toHaveCount(6);\n+    await expect(page.locator('.heat-game-build-menu .build-btn')).toHaveCount(6);\n \n     // Take initial screenshot\n     await page.screenshot({\n@@ -100,7 +100,7 @@ test.describe('Heat Game E2E Tests', () => {\n     await expect(page.locator('.heat-game-build-menu')).toBeVisible();\n \n     // Verify build menu has all structure buttons (6 buildable types)\n-    const buildButtons = page.locator('.heat-game-build-menu button');\n+    const buildButtons = page.locator('.heat-game-build-menu .build-btn');\n     await expect(buildButtons).toHaveCount(6);\n \n     // Verify initial money display shows starting money\n@@ -209,8 +209,11 @@ test.describe('Heat Game E2E Tests', () => {\n       fullPage: true\n     });\n \n-    // Money should stay the same after demolish (no refund without salvage upgrade)\n-    await expect(moneyDisplay).toHaveText(moneyAfterBuild!);\n+    // Money should increase after demolish (75% refund)\n+    // Ventilator costs €10, so refund is €7\n+    const moneyAfterDemolish = await moneyDisplay.textContent();\n+    // Just verify money changed (we got a refund)\n+    expect(moneyAfterDemolish).not.toBe(moneyAfterBuild);\n   });\n \n   test('should build a power generation setup', async ({ page }, testInfo) => {\ndiff --git a/src/app.ts b/src/app.ts\nindex f45544c..92966ed 100644\n--- a/src/app.ts\n+++ b/src/app.ts\n@@ -202,8 +202,9 @@ function initGame(): void {\n   renderer.onCellClick((x, y, button) => {\n     if (button === 0) {\n       const structure = renderer.getSelectedStructure();\n-      if (game.canBuild(x, y, structure)) {\n-        game.build(x, y, structure);\n+      const tier = renderer.getSelectedTier();\n+      if (game.canBuild(x, y, structure, tier)) {\n+        game.build(x, y, structure, tier);\n       }\n     } else if (button === 2) {\n       game.demolish(x, y);\ndiff --git a/src/game/HeatGame.test.ts b/src/game/HeatGame.test.ts\nindex 3ec16e2..bd17e76 100644\n--- a/src/game/HeatGame.test.ts\n+++ b/src/game/HeatGame.test.ts\n@@ -163,13 +163,15 @@ describe('HeatGame', () => {\n       expect(cell?.structure).toBe(StructureType.Empty);\n     });\n \n-    it('should not refund money when demolishing (without salvage upgrade)', () => {\n+    it('should refund 75% when demolishing', () => {\n+      const moneyBefore = game.getMoney();\n       game.build(0, 0, StructureType.FuelRod, Tier.T1);\n-      const moneyAfterBuild = game.getMoney();\n+      const cost = 10; // T1 fuel rod cost\n+      const expectedRefund = Math.floor(cost * 0.75);\n \n       game.demolish(0, 0);\n \n-      expect(game.getMoney()).toBe(moneyAfterBuild);\n+      expect(game.getMoney()).toBe(moneyBefore - cost + expectedRefund);\n     });\n \n     it('should reset heat when demolishing', () => {\ndiff --git a/src/game/HeatGame.ts b/src/game/HeatGame.ts\nindex 3b596db..bc741f4 100644\n--- a/src/game/HeatGame.ts\n+++ b/src/game/HeatGame.ts\n@@ -389,11 +389,9 @@ export class HeatGame {\n     const oldStructure = cell.structure;\n     const oldTier = cell.tier;\n \n-    // Refund if salvage is unlocked\n-    if (this.upgradeManager.isSecretPurchased(SecretUpgradeType.Salvage)) {\n-      const refund = Math.floor(getStructureCost(oldStructure, oldTier) * 0.5);\n-      this.money += refund;\n-    }\n+    // Base 75% refund on sell\n+    const refund = Math.floor(getStructureCost(oldStructure, oldTier) * 0.75);\n+    this.money += refund;\n \n     this.gridManager.resetCell(x, y);\n     this.stats.demolishCount++;\ndiff --git a/src/game/HeatGameRenderer.ts b/src/game/HeatGameRenderer.ts\nindex e8db34c..d9e082e 100644\n--- a/src/game/HeatGameRenderer.ts\n+++ b/src/game/HeatGameRenderer.ts\n@@ -11,8 +11,15 @@ import {\n   GameEvent,\n   CellPerformance,\n   TickHeatBalance,\n+  UpgradeType,\n+  SecretUpgradeType,\n } from './HeatGame.js';\n-import { STRUCTURE_BASE_STATS, getStructureCost } from './BalanceConfig.js';\n+import {\n+  STRUCTURE_BASE_STATS,\n+  getStructureCost,\n+  UPGRADE_DEFINITIONS,\n+  SECRET_UPGRADE_DEFINITIONS,\n+} from './BalanceConfig.js';\n \n /**\n  * HSV to RGB conversion\n@@ -126,11 +133,19 @@ export class HeatGameRenderer {\n   private selectedTier: Tier = Tier.T1;\n   private cellClickHandler: CellClickHandler | null = null;\n \n+  // Per-structure tier selection\n+  private structureTiers: Map<StructureType, Tier> = new Map();\n+\n   // UI elements\n   private uiContainer: HTMLElement | null = null;\n   private moneyDisplay: HTMLElement | null = null;\n   private statsDisplay: HTMLElement | null = null;\n   private buildMenu: HTMLElement | null = null;\n+  private upgradeMenu: HTMLElement | null = null;\n+  private secretMenu: HTMLElement | null = null;\n+\n+  // Build button references for updating affordability\n+  private buildButtons: Map<StructureType, HTMLButtonElement> = new Map();\n \n   constructor(game: HeatGame, canvas: HTMLCanvasElement, config: Partial<RenderConfig> = {}) {\n     const ctx = canvas.getContext('2d');\n@@ -569,11 +584,29 @@ export class HeatGameRenderer {\n     this.buildMenu.className = 'heat-game-build-menu';\n     this.createBuildMenu();\n     container.appendChild(this.buildMenu);\n+\n+    // Upgrade menu\n+    this.upgradeMenu = document.createElement('div');\n+    this.upgradeMenu.className = 'heat-game-upgrade-menu';\n+    this.createUpgradeMenu();\n+    container.appendChild(this.upgradeMenu);\n+\n+    // Secret upgrades menu\n+    this.secretMenu = document.createElement('div');\n+    this.secretMenu.className = 'heat-game-secret-menu';\n+    this.createSecretMenu();\n+    container.appendChild(this.secretMenu);\n   }\n \n   private createBuildMenu(): void {\n     if (!this.buildMenu) return;\n \n+    // Add title\n+    const title = document.createElement('div');\n+    title.className = 'menu-title';\n+    title.textContent = 'Build Structures';\n+    this.buildMenu.appendChild(title);\n+\n     const buildableStructures = [\n       StructureType.FuelRod,\n       StructureType.Ventilator,\n@@ -583,30 +616,127 @@ export class HeatGameRenderer {\n       StructureType.Substation,\n     ];\n \n+    // Initialize tier for each structure\n+    for (const structure of buildableStructures) {\n+      this.structureTiers.set(structure, Tier.T1);\n+    }\n+\n     for (const structure of buildableStructures) {\n       const stats = STRUCTURE_BASE_STATS[structure];\n-      const cost = getStructureCost(structure, Tier.T1);\n-      const button = document.createElement('button');\n-      button.textContent = `${STRUCTURE_SYMBOLS[structure]} ${stats.name} (€${cost})`;\n-      button.addEventListener('click', () => {\n+      const wrapper = document.createElement('div');\n+      wrapper.className = 'build-item';\n+\n+      // Minus button (decrease tier)\n+      const minusBtn = document.createElement('button');\n+      minusBtn.className = 'tier-btn tier-minus';\n+      minusBtn.textContent = '−';\n+      minusBtn.addEventListener('click', (e) => {\n+        e.stopPropagation();\n+        const currentTier = this.structureTiers.get(structure) || Tier.T1;\n+        if (currentTier > Tier.T1) {\n+          this.structureTiers.set(structure, currentTier - 1);\n+          if (this.selectedStructure === structure) {\n+            this.selectedTier = currentTier - 1;\n+          }\n+          this.updateBuildButton(structure);\n+        }\n+      });\n+\n+      // Buy button\n+      const tier = this.structureTiers.get(structure) || Tier.T1;\n+      const cost = getStructureCost(structure, tier);\n+      const buyBtn = document.createElement('button');\n+      buyBtn.className = 'build-btn';\n+      buyBtn.innerHTML = `<span class=\"struct-symbol\">${STRUCTURE_SYMBOLS[structure]}</span> <span class=\"struct-name\">${stats.name}</span> <span class=\"struct-tier\">T${tier}</span> <span class=\"struct-cost\">€${cost}</span>`;\n+      buyBtn.dataset.structure = structure;\n+      buyBtn.addEventListener('click', () => {\n+        this.selectedTier = this.structureTiers.get(structure) || Tier.T1;\n         this.setSelectedStructure(structure);\n         this.updateBuildMenuSelection();\n       });\n-      button.dataset.structure = structure;\n-      this.buildMenu.appendChild(button);\n+      this.buildButtons.set(structure, buyBtn);\n+\n+      // Plus button (increase tier)\n+      const plusBtn = document.createElement('button');\n+      plusBtn.className = 'tier-btn tier-plus';\n+      plusBtn.textContent = '+';\n+      plusBtn.addEventListener('click', (e) => {\n+        e.stopPropagation();\n+        const currentTier = this.structureTiers.get(structure) || Tier.T1;\n+        if (currentTier < Tier.T4) {\n+          this.structureTiers.set(structure, currentTier + 1);\n+          if (this.selectedStructure === structure) {\n+            this.selectedTier = currentTier + 1;\n+          }\n+          this.updateBuildButton(structure);\n+        }\n+      });\n+\n+      wrapper.appendChild(minusBtn);\n+      wrapper.appendChild(buyBtn);\n+      wrapper.appendChild(plusBtn);\n+      this.buildMenu.appendChild(wrapper);\n     }\n   }\n \n+  private updateBuildButton(structure: StructureType): void {\n+    const button = this.buildButtons.get(structure);\n+    if (!button) return;\n+\n+    const stats = STRUCTURE_BASE_STATS[structure];\n+    const tier = this.structureTiers.get(structure) || Tier.T1;\n+    const cost = getStructureCost(structure, tier);\n+    const canAfford = this.game.getMoney() >= cost;\n+\n+    button.innerHTML = `<span class=\"struct-symbol\">${STRUCTURE_SYMBOLS[structure]}</span> <span class=\"struct-name\">${stats.name}</span> <span class=\"struct-tier\">T${tier}</span> <span class=\"struct-cost\">€${cost}</span>`;\n+    button.disabled = !canAfford;\n+    button.classList.toggle('disabled', !canAfford);\n+  }\n+\n+  private createUpgradeMenu(): void {\n+    if (!this.upgradeMenu) return;\n+\n+    const title = document.createElement('div');\n+    title.className = 'menu-title';\n+    title.textContent = 'Upgrades';\n+    this.upgradeMenu.appendChild(title);\n+\n+    const upgradeList = document.createElement('div');\n+    upgradeList.className = 'upgrade-list';\n+    upgradeList.id = 'upgrade-list';\n+    this.upgradeMenu.appendChild(upgradeList);\n+  }\n+\n+  private createSecretMenu(): void {\n+    if (!this.secretMenu) return;\n+\n+    const title = document.createElement('div');\n+    title.className = 'menu-title';\n+    title.textContent = 'Secret Upgrades';\n+    this.secretMenu.appendChild(title);\n+\n+    const secretList = document.createElement('div');\n+    secretList.className = 'secret-list';\n+    secretList.id = 'secret-list';\n+    this.secretMenu.appendChild(secretList);\n+  }\n+\n   private updateBuildMenuSelection(): void {\n     if (!this.buildMenu) return;\n \n-    const buttons = this.buildMenu.querySelectorAll('button');\n+    const buttons = this.buildMenu.querySelectorAll('.build-btn');\n     buttons.forEach(button => {\n-      const isSelected = button.dataset.structure === this.selectedStructure;\n+      const isSelected = (button as HTMLElement).dataset.structure === this.selectedStructure;\n       button.classList.toggle('selected', isSelected);\n     });\n   }\n \n+  private updateBuildMenuAffordability(): void {\n+    for (const [structure] of this.buildButtons) {\n+      this.updateBuildButton(structure);\n+    }\n+  }\n+\n   updateUI(): void {\n     if (this.moneyDisplay) {\n       this.moneyDisplay.textContent = `Money: €${this.game.getMoney().toFixed(0)}`;\n@@ -640,6 +770,122 @@ export class HeatGameRenderer {\n         ${heatBalanceHtml}\n       `;\n     }\n+\n+    // Update build menu affordability\n+    this.updateBuildMenuAffordability();\n+\n+    // Update upgrade menus\n+    this.updateUpgradeMenu();\n+    this.updateSecretMenu();\n+  }\n+\n+  private updateUpgradeMenu(): void {\n+    const upgradeList = document.getElementById('upgrade-list');\n+    if (!upgradeList) return;\n+\n+    const money = this.game.getMoney();\n+    let html = '';\n+\n+    for (const type of Object.values(UpgradeType)) {\n+      const def = UPGRADE_DEFINITIONS[type];\n+      const level = this.game.getUpgradeLevel(type);\n+      const cost = this.game.getUpgradeCost(type);\n+      const canAfford = money >= cost;\n+      const isMaxed = def.maxLevel > 0 && level >= def.maxLevel;\n+\n+      html += `\n+        <div class=\"upgrade-item\">\n+          <div class=\"upgrade-info\">\n+            <span class=\"upgrade-name\">${def.name}</span>\n+            <span class=\"upgrade-level\">Lv.${level}${def.maxLevel > 0 ? '/' + def.maxLevel : ''}</span>\n+          </div>\n+          <button class=\"upgrade-btn\" data-upgrade=\"${type}\" ${isMaxed || !canAfford ? 'disabled' : ''}>\n+            ${isMaxed ? 'MAX' : `€${cost}`}\n+          </button>\n+        </div>\n+      `;\n+    }\n+\n+    upgradeList.innerHTML = html;\n+\n+    // Add click handlers\n+    upgradeList.querySelectorAll('.upgrade-btn').forEach(btn => {\n+      btn.addEventListener('click', () => {\n+        const upgradeType = (btn as HTMLElement).dataset.upgrade as UpgradeType;\n+        if (upgradeType && this.game.canPurchaseUpgrade(upgradeType)) {\n+          this.game.purchaseUpgrade(upgradeType);\n+          this.updateUpgradeMenu();\n+        }\n+      });\n+    });\n+  }\n+\n+  private updateSecretMenu(): void {\n+    const secretList = document.getElementById('secret-list');\n+    if (!secretList) return;\n+\n+    const money = this.game.getMoney();\n+    let html = '';\n+    let hasVisibleSecrets = false;\n+\n+    for (const type of Object.values(SecretUpgradeType)) {\n+      const def = SECRET_UPGRADE_DEFINITIONS[type];\n+      const isUnlocked = this.game.isSecretUnlocked(type);\n+      const isPurchased = this.game.isSecretPurchased(type);\n+      const isEnabled = this.game.isSecretEnabled(type);\n+\n+      if (!isUnlocked && !isPurchased) continue;\n+\n+      hasVisibleSecrets = true;\n+      const cost = this.game.getSecretCost(type);\n+      const canAfford = money >= cost;\n+\n+      html += `\n+        <div class=\"secret-item ${isPurchased ? 'purchased' : ''}\">\n+          <div class=\"secret-info\">\n+            <span class=\"secret-name\">${def.name}</span>\n+            <span class=\"secret-desc\">${def.description}</span>\n+          </div>\n+          <div class=\"secret-actions\">\n+            ${isPurchased\n+              ? (def.isToggle\n+                ? `<button class=\"toggle-btn ${isEnabled ? 'enabled' : ''}\" data-secret=\"${type}\">${isEnabled ? 'ON' : 'OFF'}</button>`\n+                : '<span class=\"owned\">Owned</span>')\n+              : `<button class=\"secret-btn\" data-secret=\"${type}\" ${!canAfford ? 'disabled' : ''}>€${cost}</button>`\n+            }\n+          </div>\n+        </div>\n+      `;\n+    }\n+\n+    if (!hasVisibleSecrets) {\n+      html = '<div class=\"no-secrets\">No secrets discovered yet...</div>';\n+    }\n+\n+    secretList.innerHTML = html;\n+\n+    // Add click handlers for purchase\n+    secretList.querySelectorAll('.secret-btn').forEach(btn => {\n+      btn.addEventListener('click', () => {\n+        const secretType = (btn as HTMLElement).dataset.secret as SecretUpgradeType;\n+        if (secretType && this.game.canPurchaseSecret(secretType)) {\n+          this.game.purchaseSecret(secretType);\n+          this.updateSecretMenu();\n+        }\n+      });\n+    });\n+\n+    // Add click handlers for toggle\n+    secretList.querySelectorAll('.toggle-btn').forEach(btn => {\n+      btn.addEventListener('click', () => {\n+        const secretType = (btn as HTMLElement).dataset.secret as SecretUpgradeType;\n+        if (secretType) {\n+          const isEnabled = this.game.isSecretEnabled(secretType);\n+          this.game.toggleSecret(secretType, !isEnabled);\n+          this.updateSecretMenu();\n+        }\n+      });\n+    });\n   }\n \n   private showMeltdownAnimation(): void {",
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "/home/runner/work/claudetest123/claudetest123/test-results",
+        "repeatEach": 1,
+        "retries": 2,
+        "metadata": {
+          "ci": {
+            "commitHref": "https://github.com/bjuergens/claudetest123/commit/09b0699671d19cf4c1e8fbae319b6af99cd9a04e",
+            "commitHash": "09b0699671d19cf4c1e8fbae319b6af99cd9a04e",
+            "prHref": "https://github.com/bjuergens/claudetest123/pull/15",
+            "prTitle": "Add upgrade menu and tier selection for structures",
+            "prBaseHash": "311c1edf57f28370c0b2b4f4897ecc08824337af",
+            "buildHref": "https://github.com/bjuergens/claudetest123/actions/runs/21552063166"
+          },
+          "gitCommit": {
+            "shortHash": "09b0699",
+            "hash": "09b0699671d19cf4c1e8fbae319b6af99cd9a04e",
+            "subject": "Merge 627cb165606204a4ca8d4e875c08ec5dd246f7ac into 311c1edf57f28370c0b2b4f4897ecc08824337af",
+            "body": "Merge 627cb165606204a4ca8d4e875c08ec5dd246f7ac into 311c1edf57f28370c0b2b4f4897ecc08824337af\n",
+            "author": {
+              "name": "Björn Jürgens",
+              "email": "4362465+bjuergens@users.noreply.github.com",
+              "time": 1769898978000
+            },
+            "committer": {
+              "name": "GitHub",
+              "email": "noreply@github.com",
+              "time": 1769898978000
+            },
+            "branch": "HEAD"
+          },
+          "gitDiff": "diff --git a/deploy/styles.css b/deploy/styles.css\nindex 22f811d..8d215a8 100644\n--- a/deploy/styles.css\n+++ b/deploy/styles.css\n@@ -90,19 +90,58 @@ body {\n     color: #aaa;\n }\n \n+/* Menu titles */\n+.menu-title {\n+    font-size: 0.9rem;\n+    font-weight: bold;\n+    color: #888;\n+    text-transform: uppercase;\n+    letter-spacing: 0.5px;\n+    margin-bottom: 8px;\n+    padding-bottom: 4px;\n+    border-bottom: 1px solid #444;\n+}\n+\n+/* Build Menu */\n .heat-game-build-menu {\n     display: flex;\n-    flex-wrap: wrap;\n-    gap: 8px;\n+    flex-direction: column;\n+    gap: 6px;\n     padding: 10px;\n     background: #252525;\n     border-radius: 4px;\n }\n \n-.heat-game-build-menu button {\n-    flex: 1 1 calc(50% - 4px);\n-    min-width: 140px;\n-    padding: 10px 12px;\n+.build-item {\n+    display: flex;\n+    gap: 4px;\n+}\n+\n+.tier-btn {\n+    width: 32px;\n+    padding: 8px 0;\n+    border: 2px solid #444;\n+    border-radius: 4px;\n+    background: #333;\n+    color: #ddd;\n+    font-size: 1rem;\n+    font-weight: bold;\n+    cursor: pointer;\n+    transition: all 0.15s;\n+}\n+\n+.tier-btn:hover {\n+    background: #555;\n+    border-color: #666;\n+}\n+\n+.tier-btn:active {\n+    background: #666;\n+}\n+\n+.build-btn {\n+    flex: 1;\n+    padding: 8px 10px;\n     border: 2px solid #444;\n     border-radius: 4px;\n     background: #333;\n@@ -111,19 +150,222 @@ body {\n     cursor: pointer;\n     transition: all 0.15s;\n     text-align: left;\n+    display: flex;\n+    align-items: center;\n+    gap: 6px;\n }\n \n-.heat-game-build-menu button:hover {\n+.build-btn .struct-symbol {\n+    font-weight: bold;\n+    min-width: 14px;\n+}\n+\n+.build-btn .struct-name {\n+    flex: 1;\n+}\n+\n+.build-btn .struct-tier {\n+    color: #888;\n+    font-size: 0.75rem;\n+}\n+\n+.build-btn .struct-cost {\n+    color: #00ff88;\n+    font-weight: bold;\n+}\n+\n+.build-btn:hover:not(:disabled) {\n     background: #444;\n     border-color: #666;\n }\n \n-.heat-game-build-menu button.selected {\n+.build-btn.selected {\n     background: #ff6b00;\n     border-color: #ff8533;\n     color: #fff;\n }\n \n+.build-btn.selected .struct-tier,\n+.build-btn.selected .struct-cost {\n+    color: #fff;\n+}\n+\n+.build-btn:disabled,\n+.build-btn.disabled {\n+    opacity: 0.5;\n+    cursor: not-allowed;\n+}\n+\n+/* Upgrade Menu */\n+.heat-game-upgrade-menu {\n+    display: flex;\n+    flex-direction: column;\n+    gap: 6px;\n+    padding: 10px;\n+    background: #252525;\n+    border-radius: 4px;\n+    max-height: 300px;\n+    overflow-y: auto;\n+}\n+\n+.upgrade-list {\n+    display: flex;\n+    flex-direction: column;\n+    gap: 4px;\n+}\n+\n+.upgrade-item {\n+    display: flex;\n+    justify-content: space-between;\n+    align-items: center;\n+    padding: 6px 8px;\n+    background: #333;\n+    border-radius: 4px;\n+}\n+\n+.upgrade-info {\n+    display: flex;\n+    flex-direction: column;\n+    gap: 2px;\n+}\n+\n+.upgrade-name {\n+    font-size: 0.8rem;\n+    color: #ddd;\n+}\n+\n+.upgrade-level {\n+    font-size: 0.7rem;\n+    color: #888;\n+}\n+\n+.upgrade-btn {\n+    padding: 4px 10px;\n+    border: 2px solid #444;\n+    border-radius: 4px;\n+    background: #00aa66;\n+    color: #fff;\n+    font-size: 0.75rem;\n+    font-weight: bold;\n+    cursor: pointer;\n+    transition: all 0.15s;\n+}\n+\n+.upgrade-btn:hover:not(:disabled) {\n+    background: #00cc77;\n+}\n+\n+.upgrade-btn:disabled {\n+    background: #555;\n+    color: #888;\n+    cursor: not-allowed;\n+}\n+\n+/* Secret Menu */\n+.heat-game-secret-menu {\n+    display: flex;\n+    flex-direction: column;\n+    gap: 6px;\n+    padding: 10px;\n+    background: #252525;\n+    border-radius: 4px;\n+    max-height: 250px;\n+    overflow-y: auto;\n+}\n+\n+.secret-list {\n+    display: flex;\n+    flex-direction: column;\n+    gap: 6px;\n+}\n+\n+.secret-item {\n+    padding: 8px;\n+    background: #333;\n+    border-radius: 4px;\n+    border-left: 3px solid #aa00ff;\n+}\n+\n+.secret-item.purchased {\n+    border-left-color: #00ff88;\n+}\n+\n+.secret-info {\n+    display: flex;\n+    flex-direction: column;\n+    gap: 2px;\n+    margin-bottom: 6px;\n+}\n+\n+.secret-name {\n+    font-size: 0.85rem;\n+    color: #ddd;\n+    font-weight: bold;\n+}\n+\n+.secret-desc {\n+    font-size: 0.7rem;\n+    color: #888;\n+}\n+\n+.secret-actions {\n+    display: flex;\n+    justify-content: flex-end;\n+}\n+\n+.secret-btn {\n+    padding: 4px 12px;\n+    border: 2px solid #aa00ff;\n+    border-radius: 4px;\n+    background: #660099;\n+    color: #fff;\n+    font-size: 0.75rem;\n+    font-weight: bold;\n+    cursor: pointer;\n+    transition: all 0.15s;\n+}\n+\n+.secret-btn:hover:not(:disabled) {\n+    background: #880099;\n+}\n+\n+.secret-btn:disabled {\n+    opacity: 0.5;\n+    cursor: not-allowed;\n+}\n+\n+.toggle-btn {\n+    padding: 4px 12px;\n+    border: 2px solid #444;\n+    border-radius: 4px;\n+    background: #555;\n+    color: #888;\n+    font-size: 0.75rem;\n+    font-weight: bold;\n+    cursor: pointer;\n+    transition: all 0.15s;\n+}\n+\n+.toggle-btn.enabled {\n+    background: #00aa66;\n+    border-color: #00cc77;\n+    color: #fff;\n+}\n+\n+.owned {\n+    font-size: 0.75rem;\n+    color: #00ff88;\n+    font-weight: bold;\n+}\n+\n+.no-secrets {\n+    font-size: 0.8rem;\n+    color: #666;\n+    font-style: italic;\n+    text-align: center;\n+    padding: 10px;\n+}\n+\n /* Footer */\n .app-footer {\n     text-align: center;\ndiff --git a/e2e/heat-game.spec.ts b/e2e/heat-game.spec.ts\nindex 7ea1cd9..636b53d 100644\n--- a/e2e/heat-game.spec.ts\n+++ b/e2e/heat-game.spec.ts\n@@ -63,7 +63,7 @@ test.describe('Heat Game E2E Tests', () => {\n \n     // Verify we have all 6 build buttons before proceeding\n     // (FuelRod, Ventilator, HeatExchanger, Insulator, Turbine, Substation)\n-    await expect(page.locator('.heat-game-build-menu button')).toHaveCount(6);\n+    await expect(page.locator('.heat-game-build-menu .build-btn')).toHaveCount(6);\n \n     // Take initial screenshot\n     await page.screenshot({\n@@ -100,7 +100,7 @@ test.describe('Heat Game E2E Tests', () => {\n     await expect(page.locator('.heat-game-build-menu')).toBeVisible();\n \n     // Verify build menu has all structure buttons (6 buildable types)\n-    const buildButtons = page.locator('.heat-game-build-menu button');\n+    const buildButtons = page.locator('.heat-game-build-menu .build-btn');\n     await expect(buildButtons).toHaveCount(6);\n \n     // Verify initial money display shows starting money\n@@ -209,8 +209,11 @@ test.describe('Heat Game E2E Tests', () => {\n       fullPage: true\n     });\n \n-    // Money should stay the same after demolish (no refund without salvage upgrade)\n-    await expect(moneyDisplay).toHaveText(moneyAfterBuild!);\n+    // Money should increase after demolish (75% refund)\n+    // Ventilator costs €10, so refund is €7\n+    const moneyAfterDemolish = await moneyDisplay.textContent();\n+    // Just verify money changed (we got a refund)\n+    expect(moneyAfterDemolish).not.toBe(moneyAfterBuild);\n   });\n \n   test('should build a power generation setup', async ({ page }, testInfo) => {\ndiff --git a/src/app.ts b/src/app.ts\nindex f45544c..92966ed 100644\n--- a/src/app.ts\n+++ b/src/app.ts\n@@ -202,8 +202,9 @@ function initGame(): void {\n   renderer.onCellClick((x, y, button) => {\n     if (button === 0) {\n       const structure = renderer.getSelectedStructure();\n-      if (game.canBuild(x, y, structure)) {\n-        game.build(x, y, structure);\n+      const tier = renderer.getSelectedTier();\n+      if (game.canBuild(x, y, structure, tier)) {\n+        game.build(x, y, structure, tier);\n       }\n     } else if (button === 2) {\n       game.demolish(x, y);\ndiff --git a/src/game/HeatGame.test.ts b/src/game/HeatGame.test.ts\nindex 3ec16e2..bd17e76 100644\n--- a/src/game/HeatGame.test.ts\n+++ b/src/game/HeatGame.test.ts\n@@ -163,13 +163,15 @@ describe('HeatGame', () => {\n       expect(cell?.structure).toBe(StructureType.Empty);\n     });\n \n-    it('should not refund money when demolishing (without salvage upgrade)', () => {\n+    it('should refund 75% when demolishing', () => {\n+      const moneyBefore = game.getMoney();\n       game.build(0, 0, StructureType.FuelRod, Tier.T1);\n-      const moneyAfterBuild = game.getMoney();\n+      const cost = 10; // T1 fuel rod cost\n+      const expectedRefund = Math.floor(cost * 0.75);\n \n       game.demolish(0, 0);\n \n-      expect(game.getMoney()).toBe(moneyAfterBuild);\n+      expect(game.getMoney()).toBe(moneyBefore - cost + expectedRefund);\n     });\n \n     it('should reset heat when demolishing', () => {\ndiff --git a/src/game/HeatGame.ts b/src/game/HeatGame.ts\nindex 3b596db..bc741f4 100644\n--- a/src/game/HeatGame.ts\n+++ b/src/game/HeatGame.ts\n@@ -389,11 +389,9 @@ export class HeatGame {\n     const oldStructure = cell.structure;\n     const oldTier = cell.tier;\n \n-    // Refund if salvage is unlocked\n-    if (this.upgradeManager.isSecretPurchased(SecretUpgradeType.Salvage)) {\n-      const refund = Math.floor(getStructureCost(oldStructure, oldTier) * 0.5);\n-      this.money += refund;\n-    }\n+    // Base 75% refund on sell\n+    const refund = Math.floor(getStructureCost(oldStructure, oldTier) * 0.75);\n+    this.money += refund;\n \n     this.gridManager.resetCell(x, y);\n     this.stats.demolishCount++;\ndiff --git a/src/game/HeatGameRenderer.ts b/src/game/HeatGameRenderer.ts\nindex e8db34c..d9e082e 100644\n--- a/src/game/HeatGameRenderer.ts\n+++ b/src/game/HeatGameRenderer.ts\n@@ -11,8 +11,15 @@ import {\n   GameEvent,\n   CellPerformance,\n   TickHeatBalance,\n+  UpgradeType,\n+  SecretUpgradeType,\n } from './HeatGame.js';\n-import { STRUCTURE_BASE_STATS, getStructureCost } from './BalanceConfig.js';\n+import {\n+  STRUCTURE_BASE_STATS,\n+  getStructureCost,\n+  UPGRADE_DEFINITIONS,\n+  SECRET_UPGRADE_DEFINITIONS,\n+} from './BalanceConfig.js';\n \n /**\n  * HSV to RGB conversion\n@@ -126,11 +133,19 @@ export class HeatGameRenderer {\n   private selectedTier: Tier = Tier.T1;\n   private cellClickHandler: CellClickHandler | null = null;\n \n+  // Per-structure tier selection\n+  private structureTiers: Map<StructureType, Tier> = new Map();\n+\n   // UI elements\n   private uiContainer: HTMLElement | null = null;\n   private moneyDisplay: HTMLElement | null = null;\n   private statsDisplay: HTMLElement | null = null;\n   private buildMenu: HTMLElement | null = null;\n+  private upgradeMenu: HTMLElement | null = null;\n+  private secretMenu: HTMLElement | null = null;\n+\n+  // Build button references for updating affordability\n+  private buildButtons: Map<StructureType, HTMLButtonElement> = new Map();\n \n   constructor(game: HeatGame, canvas: HTMLCanvasElement, config: Partial<RenderConfig> = {}) {\n     const ctx = canvas.getContext('2d');\n@@ -569,11 +584,29 @@ export class HeatGameRenderer {\n     this.buildMenu.className = 'heat-game-build-menu';\n     this.createBuildMenu();\n     container.appendChild(this.buildMenu);\n+\n+    // Upgrade menu\n+    this.upgradeMenu = document.createElement('div');\n+    this.upgradeMenu.className = 'heat-game-upgrade-menu';\n+    this.createUpgradeMenu();\n+    container.appendChild(this.upgradeMenu);\n+\n+    // Secret upgrades menu\n+    this.secretMenu = document.createElement('div');\n+    this.secretMenu.className = 'heat-game-secret-menu';\n+    this.createSecretMenu();\n+    container.appendChild(this.secretMenu);\n   }\n \n   private createBuildMenu(): void {\n     if (!this.buildMenu) return;\n \n+    // Add title\n+    const title = document.createElement('div');\n+    title.className = 'menu-title';\n+    title.textContent = 'Build Structures';\n+    this.buildMenu.appendChild(title);\n+\n     const buildableStructures = [\n       StructureType.FuelRod,\n       StructureType.Ventilator,\n@@ -583,30 +616,127 @@ export class HeatGameRenderer {\n       StructureType.Substation,\n     ];\n \n+    // Initialize tier for each structure\n+    for (const structure of buildableStructures) {\n+      this.structureTiers.set(structure, Tier.T1);\n+    }\n+\n     for (const structure of buildableStructures) {\n       const stats = STRUCTURE_BASE_STATS[structure];\n-      const cost = getStructureCost(structure, Tier.T1);\n-      const button = document.createElement('button');\n-      button.textContent = `${STRUCTURE_SYMBOLS[structure]} ${stats.name} (€${cost})`;\n-      button.addEventListener('click', () => {\n+      const wrapper = document.createElement('div');\n+      wrapper.className = 'build-item';\n+\n+      // Minus button (decrease tier)\n+      const minusBtn = document.createElement('button');\n+      minusBtn.className = 'tier-btn tier-minus';\n+      minusBtn.textContent = '−';\n+      minusBtn.addEventListener('click', (e) => {\n+        e.stopPropagation();\n+        const currentTier = this.structureTiers.get(structure) || Tier.T1;\n+        if (currentTier > Tier.T1) {\n+          this.structureTiers.set(structure, currentTier - 1);\n+          if (this.selectedStructure === structure) {\n+            this.selectedTier = currentTier - 1;\n+          }\n+          this.updateBuildButton(structure);\n+        }\n+      });\n+\n+      // Buy button\n+      const tier = this.structureTiers.get(structure) || Tier.T1;\n+      const cost = getStructureCost(structure, tier);\n+      const buyBtn = document.createElement('button');\n+      buyBtn.className = 'build-btn';\n+      buyBtn.innerHTML = `<span class=\"struct-symbol\">${STRUCTURE_SYMBOLS[structure]}</span> <span class=\"struct-name\">${stats.name}</span> <span class=\"struct-tier\">T${tier}</span> <span class=\"struct-cost\">€${cost}</span>`;\n+      buyBtn.dataset.structure = structure;\n+      buyBtn.addEventListener('click', () => {\n+        this.selectedTier = this.structureTiers.get(structure) || Tier.T1;\n         this.setSelectedStructure(structure);\n         this.updateBuildMenuSelection();\n       });\n-      button.dataset.structure = structure;\n-      this.buildMenu.appendChild(button);\n+      this.buildButtons.set(structure, buyBtn);\n+\n+      // Plus button (increase tier)\n+      const plusBtn = document.createElement('button');\n+      plusBtn.className = 'tier-btn tier-plus';\n+      plusBtn.textContent = '+';\n+      plusBtn.addEventListener('click', (e) => {\n+        e.stopPropagation();\n+        const currentTier = this.structureTiers.get(structure) || Tier.T1;\n+        if (currentTier < Tier.T4) {\n+          this.structureTiers.set(structure, currentTier + 1);\n+          if (this.selectedStructure === structure) {\n+            this.selectedTier = currentTier + 1;\n+          }\n+          this.updateBuildButton(structure);\n+        }\n+      });\n+\n+      wrapper.appendChild(minusBtn);\n+      wrapper.appendChild(buyBtn);\n+      wrapper.appendChild(plusBtn);\n+      this.buildMenu.appendChild(wrapper);\n     }\n   }\n \n+  private updateBuildButton(structure: StructureType): void {\n+    const button = this.buildButtons.get(structure);\n+    if (!button) return;\n+\n+    const stats = STRUCTURE_BASE_STATS[structure];\n+    const tier = this.structureTiers.get(structure) || Tier.T1;\n+    const cost = getStructureCost(structure, tier);\n+    const canAfford = this.game.getMoney() >= cost;\n+\n+    button.innerHTML = `<span class=\"struct-symbol\">${STRUCTURE_SYMBOLS[structure]}</span> <span class=\"struct-name\">${stats.name}</span> <span class=\"struct-tier\">T${tier}</span> <span class=\"struct-cost\">€${cost}</span>`;\n+    button.disabled = !canAfford;\n+    button.classList.toggle('disabled', !canAfford);\n+  }\n+\n+  private createUpgradeMenu(): void {\n+    if (!this.upgradeMenu) return;\n+\n+    const title = document.createElement('div');\n+    title.className = 'menu-title';\n+    title.textContent = 'Upgrades';\n+    this.upgradeMenu.appendChild(title);\n+\n+    const upgradeList = document.createElement('div');\n+    upgradeList.className = 'upgrade-list';\n+    upgradeList.id = 'upgrade-list';\n+    this.upgradeMenu.appendChild(upgradeList);\n+  }\n+\n+  private createSecretMenu(): void {\n+    if (!this.secretMenu) return;\n+\n+    const title = document.createElement('div');\n+    title.className = 'menu-title';\n+    title.textContent = 'Secret Upgrades';\n+    this.secretMenu.appendChild(title);\n+\n+    const secretList = document.createElement('div');\n+    secretList.className = 'secret-list';\n+    secretList.id = 'secret-list';\n+    this.secretMenu.appendChild(secretList);\n+  }\n+\n   private updateBuildMenuSelection(): void {\n     if (!this.buildMenu) return;\n \n-    const buttons = this.buildMenu.querySelectorAll('button');\n+    const buttons = this.buildMenu.querySelectorAll('.build-btn');\n     buttons.forEach(button => {\n-      const isSelected = button.dataset.structure === this.selectedStructure;\n+      const isSelected = (button as HTMLElement).dataset.structure === this.selectedStructure;\n       button.classList.toggle('selected', isSelected);\n     });\n   }\n \n+  private updateBuildMenuAffordability(): void {\n+    for (const [structure] of this.buildButtons) {\n+      this.updateBuildButton(structure);\n+    }\n+  }\n+\n   updateUI(): void {\n     if (this.moneyDisplay) {\n       this.moneyDisplay.textContent = `Money: €${this.game.getMoney().toFixed(0)}`;\n@@ -640,6 +770,122 @@ export class HeatGameRenderer {\n         ${heatBalanceHtml}\n       `;\n     }\n+\n+    // Update build menu affordability\n+    this.updateBuildMenuAffordability();\n+\n+    // Update upgrade menus\n+    this.updateUpgradeMenu();\n+    this.updateSecretMenu();\n+  }\n+\n+  private updateUpgradeMenu(): void {\n+    const upgradeList = document.getElementById('upgrade-list');\n+    if (!upgradeList) return;\n+\n+    const money = this.game.getMoney();\n+    let html = '';\n+\n+    for (const type of Object.values(UpgradeType)) {\n+      const def = UPGRADE_DEFINITIONS[type];\n+      const level = this.game.getUpgradeLevel(type);\n+      const cost = this.game.getUpgradeCost(type);\n+      const canAfford = money >= cost;\n+      const isMaxed = def.maxLevel > 0 && level >= def.maxLevel;\n+\n+      html += `\n+        <div class=\"upgrade-item\">\n+          <div class=\"upgrade-info\">\n+            <span class=\"upgrade-name\">${def.name}</span>\n+            <span class=\"upgrade-level\">Lv.${level}${def.maxLevel > 0 ? '/' + def.maxLevel : ''}</span>\n+          </div>\n+          <button class=\"upgrade-btn\" data-upgrade=\"${type}\" ${isMaxed || !canAfford ? 'disabled' : ''}>\n+            ${isMaxed ? 'MAX' : `€${cost}`}\n+          </button>\n+        </div>\n+      `;\n+    }\n+\n+    upgradeList.innerHTML = html;\n+\n+    // Add click handlers\n+    upgradeList.querySelectorAll('.upgrade-btn').forEach(btn => {\n+      btn.addEventListener('click', () => {\n+        const upgradeType = (btn as HTMLElement).dataset.upgrade as UpgradeType;\n+        if (upgradeType && this.game.canPurchaseUpgrade(upgradeType)) {\n+          this.game.purchaseUpgrade(upgradeType);\n+          this.updateUpgradeMenu();\n+        }\n+      });\n+    });\n+  }\n+\n+  private updateSecretMenu(): void {\n+    const secretList = document.getElementById('secret-list');\n+    if (!secretList) return;\n+\n+    const money = this.game.getMoney();\n+    let html = '';\n+    let hasVisibleSecrets = false;\n+\n+    for (const type of Object.values(SecretUpgradeType)) {\n+      const def = SECRET_UPGRADE_DEFINITIONS[type];\n+      const isUnlocked = this.game.isSecretUnlocked(type);\n+      const isPurchased = this.game.isSecretPurchased(type);\n+      const isEnabled = this.game.isSecretEnabled(type);\n+\n+      if (!isUnlocked && !isPurchased) continue;\n+\n+      hasVisibleSecrets = true;\n+      const cost = this.game.getSecretCost(type);\n+      const canAfford = money >= cost;\n+\n+      html += `\n+        <div class=\"secret-item ${isPurchased ? 'purchased' : ''}\">\n+          <div class=\"secret-info\">\n+            <span class=\"secret-name\">${def.name}</span>\n+            <span class=\"secret-desc\">${def.description}</span>\n+          </div>\n+          <div class=\"secret-actions\">\n+            ${isPurchased\n+              ? (def.isToggle\n+                ? `<button class=\"toggle-btn ${isEnabled ? 'enabled' : ''}\" data-secret=\"${type}\">${isEnabled ? 'ON' : 'OFF'}</button>`\n+                : '<span class=\"owned\">Owned</span>')\n+              : `<button class=\"secret-btn\" data-secret=\"${type}\" ${!canAfford ? 'disabled' : ''}>€${cost}</button>`\n+            }\n+          </div>\n+        </div>\n+      `;\n+    }\n+\n+    if (!hasVisibleSecrets) {\n+      html = '<div class=\"no-secrets\">No secrets discovered yet...</div>';\n+    }\n+\n+    secretList.innerHTML = html;\n+\n+    // Add click handlers for purchase\n+    secretList.querySelectorAll('.secret-btn').forEach(btn => {\n+      btn.addEventListener('click', () => {\n+        const secretType = (btn as HTMLElement).dataset.secret as SecretUpgradeType;\n+        if (secretType && this.game.canPurchaseSecret(secretType)) {\n+          this.game.purchaseSecret(secretType);\n+          this.updateSecretMenu();\n+        }\n+      });\n+    });\n+\n+    // Add click handlers for toggle\n+    secretList.querySelectorAll('.toggle-btn').forEach(btn => {\n+      btn.addEventListener('click', () => {\n+        const secretType = (btn as HTMLElement).dataset.secret as SecretUpgradeType;\n+        if (secretType) {\n+          const isEnabled = this.game.isSecretEnabled(secretType);\n+          this.game.toggleSecret(secretType, !isEnabled);\n+          this.updateSecretMenu();\n+        }\n+      });\n+    });\n   }\n \n   private showMeltdownAnimation(): void {",
+          "actualWorkers": 1
+        },
+        "id": "chromium",
+        "name": "chromium",
+        "testDir": "/home/runner/work/claudetest123/claudetest123/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 30000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "html",
+        {
+          "outputFolder": "playwright-report"
+        }
+      ],
+      [
+        "list",
+        null
+      ],
+      [
+        "json",
+        {
+          "outputFile": "test-results/results.json"
+        }
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "runAgents": "none",
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.58.0",
+    "workers": 1,
+    "webServer": {
+      "command": "npm run serve",
+      "url": "http://localhost:3000",
+      "reuseExistingServer": false,
+      "timeout": 120000
+    }
+  },
+  "suites": [
+    {
+      "title": "heat-game.spec.ts",
+      "file": "heat-game.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Heat Game E2E Tests",
+          "file": "heat-game.spec.ts",
+          "line": 40,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should load the game and display initial state",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 599,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-31T22:37:12.418Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-2428b-e-and-display-initial-state-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-2428b-e-and-display-initial-state-chromium/attachments/browser-logs-252e98eebb6d2a6fd5612fd184955e74f7d8fa0e.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-1f7f90ca45f76c134f4d",
+              "file": "heat-game.spec.ts",
+              "line": 86,
+              "column": 3
+            },
+            {
+              "title": "should place a Fuel Rod on the grid",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 804,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-31T22:37:14.036Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-05fff-lace-a-Fuel-Rod-on-the-grid-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-05fff-lace-a-Fuel-Rod-on-the-grid-chromium/attachments/browser-logs-daa597c1e58cdd3735064670bc098a56f535a7d5.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-a31bde006f3c29450fad",
+              "file": "heat-game.spec.ts",
+              "line": 116,
+              "column": 3
+            },
+            {
+              "title": "should place multiple structures and observe heat dynamics",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1380,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-31T22:37:14.858Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-edba4-s-and-observe-heat-dynamics-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-edba4-s-and-observe-heat-dynamics-chromium/attachments/browser-logs-a9526112523c68aa24fe78334be3ec2af4a1ba62.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-2ed04ebe32d9c471053a",
+              "file": "heat-game.spec.ts",
+              "line": 148,
+              "column": 3
+            },
+            {
+              "title": "should demolish a structure with right-click",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 698,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-31T22:37:16.254Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-53724--structure-with-right-click-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-53724--structure-with-right-click-chromium/attachments/browser-logs-d97b4f4e87a5cc31e1b5dee61d33b7cf6ee7bb2f.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-ff211d87a2ad19067056",
+              "file": "heat-game.spec.ts",
+              "line": 185,
+              "column": 3
+            },
+            {
+              "title": "should build a power generation setup",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1873,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-31T22:37:16.968Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-206ae-ld-a-power-generation-setup-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-206ae-ld-a-power-generation-setup-chromium/attachments/browser-logs-6db27ca250b3a1a4083663dd5a90aeedb0e1a354.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-abe0096aa1a1c45a3b34",
+              "file": "heat-game.spec.ts",
+              "line": 219,
+              "column": 3
+            },
+            {
+              "title": "should show heat buildup with clustered fuel rods",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1784,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-31T22:37:18.855Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-1ce31-up-with-clustered-fuel-rods-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-1ce31-up-with-clustered-fuel-rods-chromium/attachments/browser-logs-4108f70a5376472a80710ba1c287f526e1cfc9b4.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-ac87d21624a439db98b8",
+              "file": "heat-game.spec.ts",
+              "line": 256,
+              "column": 3
+            },
+            {
+              "title": "should not allow building without sufficient money",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1603,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-31T22:37:20.652Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-ee0f6-ng-without-sufficient-money-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-ee0f6-ng-without-sufficient-money-chromium/attachments/browser-logs-67852c21b9cbe344288f7cfb81aa3e88ded21441.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-b096005e15a85f67c2a8",
+              "file": "heat-game.spec.ts",
+              "line": 294,
+              "column": 3
+            },
+            {
+              "title": "should handle rapid clicking on the grid",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1369,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-31T22:37:22.269Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-c664c--rapid-clicking-on-the-grid-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-c664c--rapid-clicking-on-the-grid-chromium/attachments/browser-logs-8830c25d0c901f07d14f24299509ec6ff3fc0a0b.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-1b3f7a34798ed668be9c",
+              "file": "heat-game.spec.ts",
+              "line": 336,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-01-31T22:37:06.354Z",
+    "duration": 17366.093999999997,
+    "expected": 8,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}
