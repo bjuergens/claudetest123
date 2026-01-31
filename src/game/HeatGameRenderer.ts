@@ -11,8 +11,15 @@ import {
   GameEvent,
   CellPerformance,
   TickHeatBalance,
+  UpgradeType,
+  SecretUpgradeType,
 } from './HeatGame.js';
-import { STRUCTURE_BASE_STATS, getStructureCost } from './BalanceConfig.js';
+import {
+  STRUCTURE_BASE_STATS,
+  getStructureCost,
+  UPGRADE_DEFINITIONS,
+  SECRET_UPGRADE_DEFINITIONS,
+} from './BalanceConfig.js';
 
 /**
  * HSV to RGB conversion
@@ -126,11 +133,19 @@ export class HeatGameRenderer {
   private selectedTier: Tier = Tier.T1;
   private cellClickHandler: CellClickHandler | null = null;
 
+  // Per-structure tier selection
+  private structureTiers: Map<StructureType, Tier> = new Map();
+
   // UI elements
   private uiContainer: HTMLElement | null = null;
   private moneyDisplay: HTMLElement | null = null;
   private statsDisplay: HTMLElement | null = null;
   private buildMenu: HTMLElement | null = null;
+  private upgradeMenu: HTMLElement | null = null;
+  private secretMenu: HTMLElement | null = null;
+
+  // Build button references for updating affordability
+  private buildButtons: Map<StructureType, HTMLButtonElement> = new Map();
 
   constructor(game: HeatGame, canvas: HTMLCanvasElement, config: Partial<RenderConfig> = {}) {
     const ctx = canvas.getContext('2d');
@@ -569,10 +584,28 @@ export class HeatGameRenderer {
     this.buildMenu.className = 'heat-game-build-menu';
     this.createBuildMenu();
     container.appendChild(this.buildMenu);
+
+    // Upgrade menu
+    this.upgradeMenu = document.createElement('div');
+    this.upgradeMenu.className = 'heat-game-upgrade-menu';
+    this.createUpgradeMenu();
+    container.appendChild(this.upgradeMenu);
+
+    // Secret upgrades menu
+    this.secretMenu = document.createElement('div');
+    this.secretMenu.className = 'heat-game-secret-menu';
+    this.createSecretMenu();
+    container.appendChild(this.secretMenu);
   }
 
   private createBuildMenu(): void {
     if (!this.buildMenu) return;
+
+    // Add title
+    const title = document.createElement('div');
+    title.className = 'menu-title';
+    title.textContent = 'Build Structures';
+    this.buildMenu.appendChild(title);
 
     const buildableStructures = [
       StructureType.FuelRod,
@@ -583,28 +616,125 @@ export class HeatGameRenderer {
       StructureType.Substation,
     ];
 
+    // Initialize tier for each structure
+    for (const structure of buildableStructures) {
+      this.structureTiers.set(structure, Tier.T1);
+    }
+
     for (const structure of buildableStructures) {
       const stats = STRUCTURE_BASE_STATS[structure];
-      const cost = getStructureCost(structure, Tier.T1);
-      const button = document.createElement('button');
-      button.textContent = `${STRUCTURE_SYMBOLS[structure]} ${stats.name} (€${cost})`;
-      button.addEventListener('click', () => {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'build-item';
+
+      // Minus button (decrease tier)
+      const minusBtn = document.createElement('button');
+      minusBtn.className = 'tier-btn tier-minus';
+      minusBtn.textContent = '−';
+      minusBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const currentTier = this.structureTiers.get(structure) || Tier.T1;
+        if (currentTier > Tier.T1) {
+          this.structureTiers.set(structure, currentTier - 1);
+          if (this.selectedStructure === structure) {
+            this.selectedTier = currentTier - 1;
+          }
+          this.updateBuildButton(structure);
+        }
+      });
+
+      // Buy button
+      const tier = this.structureTiers.get(structure) || Tier.T1;
+      const cost = getStructureCost(structure, tier);
+      const buyBtn = document.createElement('button');
+      buyBtn.className = 'build-btn';
+      buyBtn.innerHTML = `<span class="struct-symbol">${STRUCTURE_SYMBOLS[structure]}</span> <span class="struct-name">${stats.name}</span> <span class="struct-tier">T${tier}</span> <span class="struct-cost">€${cost}</span>`;
+      buyBtn.dataset.structure = structure;
+      buyBtn.addEventListener('click', () => {
+        this.selectedTier = this.structureTiers.get(structure) || Tier.T1;
         this.setSelectedStructure(structure);
         this.updateBuildMenuSelection();
       });
-      button.dataset.structure = structure;
-      this.buildMenu.appendChild(button);
+      this.buildButtons.set(structure, buyBtn);
+
+      // Plus button (increase tier)
+      const plusBtn = document.createElement('button');
+      plusBtn.className = 'tier-btn tier-plus';
+      plusBtn.textContent = '+';
+      plusBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const currentTier = this.structureTiers.get(structure) || Tier.T1;
+        if (currentTier < Tier.T4) {
+          this.structureTiers.set(structure, currentTier + 1);
+          if (this.selectedStructure === structure) {
+            this.selectedTier = currentTier + 1;
+          }
+          this.updateBuildButton(structure);
+        }
+      });
+
+      wrapper.appendChild(minusBtn);
+      wrapper.appendChild(buyBtn);
+      wrapper.appendChild(plusBtn);
+      this.buildMenu.appendChild(wrapper);
     }
+  }
+
+  private updateBuildButton(structure: StructureType): void {
+    const button = this.buildButtons.get(structure);
+    if (!button) return;
+
+    const stats = STRUCTURE_BASE_STATS[structure];
+    const tier = this.structureTiers.get(structure) || Tier.T1;
+    const cost = getStructureCost(structure, tier);
+    const canAfford = this.game.getMoney() >= cost;
+
+    button.innerHTML = `<span class="struct-symbol">${STRUCTURE_SYMBOLS[structure]}</span> <span class="struct-name">${stats.name}</span> <span class="struct-tier">T${tier}</span> <span class="struct-cost">€${cost}</span>`;
+    button.disabled = !canAfford;
+    button.classList.toggle('disabled', !canAfford);
+  }
+
+  private createUpgradeMenu(): void {
+    if (!this.upgradeMenu) return;
+
+    const title = document.createElement('div');
+    title.className = 'menu-title';
+    title.textContent = 'Upgrades';
+    this.upgradeMenu.appendChild(title);
+
+    const upgradeList = document.createElement('div');
+    upgradeList.className = 'upgrade-list';
+    upgradeList.id = 'upgrade-list';
+    this.upgradeMenu.appendChild(upgradeList);
+  }
+
+  private createSecretMenu(): void {
+    if (!this.secretMenu) return;
+
+    const title = document.createElement('div');
+    title.className = 'menu-title';
+    title.textContent = 'Secret Upgrades';
+    this.secretMenu.appendChild(title);
+
+    const secretList = document.createElement('div');
+    secretList.className = 'secret-list';
+    secretList.id = 'secret-list';
+    this.secretMenu.appendChild(secretList);
   }
 
   private updateBuildMenuSelection(): void {
     if (!this.buildMenu) return;
 
-    const buttons = this.buildMenu.querySelectorAll('button');
+    const buttons = this.buildMenu.querySelectorAll('.build-btn');
     buttons.forEach(button => {
-      const isSelected = button.dataset.structure === this.selectedStructure;
+      const isSelected = (button as HTMLElement).dataset.structure === this.selectedStructure;
       button.classList.toggle('selected', isSelected);
     });
+  }
+
+  private updateBuildMenuAffordability(): void {
+    for (const [structure] of this.buildButtons) {
+      this.updateBuildButton(structure);
+    }
   }
 
   updateUI(): void {
@@ -640,6 +770,122 @@ export class HeatGameRenderer {
         ${heatBalanceHtml}
       `;
     }
+
+    // Update build menu affordability
+    this.updateBuildMenuAffordability();
+
+    // Update upgrade menus
+    this.updateUpgradeMenu();
+    this.updateSecretMenu();
+  }
+
+  private updateUpgradeMenu(): void {
+    const upgradeList = document.getElementById('upgrade-list');
+    if (!upgradeList) return;
+
+    const money = this.game.getMoney();
+    let html = '';
+
+    for (const type of Object.values(UpgradeType)) {
+      const def = UPGRADE_DEFINITIONS[type];
+      const level = this.game.getUpgradeLevel(type);
+      const cost = this.game.getUpgradeCost(type);
+      const canAfford = money >= cost;
+      const isMaxed = def.maxLevel > 0 && level >= def.maxLevel;
+
+      html += `
+        <div class="upgrade-item">
+          <div class="upgrade-info">
+            <span class="upgrade-name">${def.name}</span>
+            <span class="upgrade-level">Lv.${level}${def.maxLevel > 0 ? '/' + def.maxLevel : ''}</span>
+          </div>
+          <button class="upgrade-btn" data-upgrade="${type}" ${isMaxed || !canAfford ? 'disabled' : ''}>
+            ${isMaxed ? 'MAX' : `€${cost}`}
+          </button>
+        </div>
+      `;
+    }
+
+    upgradeList.innerHTML = html;
+
+    // Add click handlers
+    upgradeList.querySelectorAll('.upgrade-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const upgradeType = (btn as HTMLElement).dataset.upgrade as UpgradeType;
+        if (upgradeType && this.game.canPurchaseUpgrade(upgradeType)) {
+          this.game.purchaseUpgrade(upgradeType);
+          this.updateUpgradeMenu();
+        }
+      });
+    });
+  }
+
+  private updateSecretMenu(): void {
+    const secretList = document.getElementById('secret-list');
+    if (!secretList) return;
+
+    const money = this.game.getMoney();
+    let html = '';
+    let hasVisibleSecrets = false;
+
+    for (const type of Object.values(SecretUpgradeType)) {
+      const def = SECRET_UPGRADE_DEFINITIONS[type];
+      const isUnlocked = this.game.isSecretUnlocked(type);
+      const isPurchased = this.game.isSecretPurchased(type);
+      const isEnabled = this.game.isSecretEnabled(type);
+
+      if (!isUnlocked && !isPurchased) continue;
+
+      hasVisibleSecrets = true;
+      const cost = this.game.getSecretCost(type);
+      const canAfford = money >= cost;
+
+      html += `
+        <div class="secret-item ${isPurchased ? 'purchased' : ''}">
+          <div class="secret-info">
+            <span class="secret-name">${def.name}</span>
+            <span class="secret-desc">${def.description}</span>
+          </div>
+          <div class="secret-actions">
+            ${isPurchased
+              ? (def.isToggle
+                ? `<button class="toggle-btn ${isEnabled ? 'enabled' : ''}" data-secret="${type}">${isEnabled ? 'ON' : 'OFF'}</button>`
+                : '<span class="owned">Owned</span>')
+              : `<button class="secret-btn" data-secret="${type}" ${!canAfford ? 'disabled' : ''}>€${cost}</button>`
+            }
+          </div>
+        </div>
+      `;
+    }
+
+    if (!hasVisibleSecrets) {
+      html = '<div class="no-secrets">No secrets discovered yet...</div>';
+    }
+
+    secretList.innerHTML = html;
+
+    // Add click handlers for purchase
+    secretList.querySelectorAll('.secret-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const secretType = (btn as HTMLElement).dataset.secret as SecretUpgradeType;
+        if (secretType && this.game.canPurchaseSecret(secretType)) {
+          this.game.purchaseSecret(secretType);
+          this.updateSecretMenu();
+        }
+      });
+    });
+
+    // Add click handlers for toggle
+    secretList.querySelectorAll('.toggle-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const secretType = (btn as HTMLElement).dataset.secret as SecretUpgradeType;
+        if (secretType) {
+          const isEnabled = this.game.isSecretEnabled(secretType);
+          this.game.toggleSecret(secretType, !isEnabled);
+          this.updateSecretMenu();
+        }
+      });
+    });
   }
 
   private showMeltdownAnimation(): void {
