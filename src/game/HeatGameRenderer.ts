@@ -91,6 +91,11 @@ export interface RenderConfig {
   showGrid: boolean;
 }
 
+export interface UIOptions {
+  onResetSave?: () => void;
+  buildVersion?: string;
+}
+
 export const DEFAULT_RENDER_CONFIG: RenderConfig = {
   cellSize: 32,
   gridPadding: 10,
@@ -143,6 +148,8 @@ export class HeatGameRenderer {
   private buildMenu: HTMLElement | null = null;
   private upgradeMenu: HTMLElement | null = null;
   private secretMenu: HTMLElement | null = null;
+  private optionsMenu: HTMLElement | null = null;
+  private uiOptions: UIOptions = {};
 
   // Build button references for updating affordability
   private buildButtons: Map<StructureType, HTMLButtonElement> = new Map();
@@ -566,8 +573,9 @@ export class HeatGameRenderer {
   }
 
   // Create HTML UI elements
-  createUI(container: HTMLElement): void {
+  createUI(container: HTMLElement, options: UIOptions = {}): void {
     this.uiContainer = container;
+    this.uiOptions = options;
 
     // Money display
     this.moneyDisplay = document.createElement('div');
@@ -596,6 +604,12 @@ export class HeatGameRenderer {
     this.secretMenu.className = 'heat-game-secret-menu';
     this.createSecretMenu();
     container.appendChild(this.secretMenu);
+
+    // Options menu
+    this.optionsMenu = document.createElement('div');
+    this.optionsMenu.className = 'heat-game-options-menu';
+    this.createOptionsMenu();
+    container.appendChild(this.optionsMenu);
   }
 
   private createBuildMenu(): void {
@@ -719,6 +733,46 @@ export class HeatGameRenderer {
     secretList.className = 'secret-list';
     secretList.id = 'secret-list';
     this.secretMenu.appendChild(secretList);
+  }
+
+  private createOptionsMenu(): void {
+    if (!this.optionsMenu) return;
+
+    const title = document.createElement('div');
+    title.className = 'menu-title';
+    title.textContent = 'Options';
+    this.optionsMenu.appendChild(title);
+
+    const optionsList = document.createElement('div');
+    optionsList.className = 'options-list';
+
+    // Reset save button
+    if (this.uiOptions.onResetSave) {
+      const resetItem = document.createElement('div');
+      resetItem.className = 'options-item';
+
+      const resetBtn = document.createElement('button');
+      resetBtn.className = 'options-btn reset-btn';
+      resetBtn.textContent = 'Reset Save';
+      resetBtn.addEventListener('click', () => {
+        if (this.uiOptions.onResetSave) {
+          this.uiOptions.onResetSave();
+        }
+      });
+
+      resetItem.appendChild(resetBtn);
+      optionsList.appendChild(resetItem);
+    }
+
+    // Version display
+    if (this.uiOptions.buildVersion) {
+      const versionItem = document.createElement('div');
+      versionItem.className = 'options-item version-item';
+      versionItem.innerHTML = `<span class="version-label">Version:</span> <span class="version-value">${this.uiOptions.buildVersion}</span>`;
+      optionsList.appendChild(versionItem);
+    }
+
+    this.optionsMenu.appendChild(optionsList);
   }
 
   private updateBuildMenuSelection(): void {
