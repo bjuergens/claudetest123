@@ -1,0 +1,512 @@
+{
+  "config": {
+    "configFile": "/home/runner/work/claudetest123/claudetest123/playwright.config.ts",
+    "rootDir": "/home/runner/work/claudetest123/claudetest123/e2e",
+    "forbidOnly": true,
+    "fullyParallel": true,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "ci": {
+        "commitHref": "https://github.com/bjuergens/claudetest123/commit/fc427d758ae6157c799fce2f8c457198bc59c399",
+        "commitHash": "fc427d758ae6157c799fce2f8c457198bc59c399",
+        "prHref": "https://github.com/bjuergens/claudetest123/pull/14",
+        "prTitle": "Rebuild heat exchange algorithm with averaging formula",
+        "prBaseHash": "e5ebbcc3a97809aa0d1588ed470b7e49c44e075e",
+        "buildHref": "https://github.com/bjuergens/claudetest123/actions/runs/21551790132"
+      },
+      "gitCommit": {
+        "shortHash": "fc427d7",
+        "hash": "fc427d758ae6157c799fce2f8c457198bc59c399",
+        "subject": "Merge 410fe98e380763958003592e855bb78b10b5318e into e5ebbcc3a97809aa0d1588ed470b7e49c44e075e",
+        "body": "Merge 410fe98e380763958003592e855bb78b10b5318e into e5ebbcc3a97809aa0d1588ed470b7e49c44e075e\n",
+        "author": {
+          "name": "Björn Jürgens",
+          "email": "4362465+bjuergens@users.noreply.github.com",
+          "time": 1769897620000
+        },
+        "committer": {
+          "name": "GitHub",
+          "email": "noreply@github.com",
+          "time": 1769897620000
+        },
+        "branch": "HEAD"
+      },
+      "gitDiff": "diff --git a/src/game/BalanceConfig.ts b/src/game/BalanceConfig.ts\nindex 933fa42..2d3f6af 100644\n--- a/src/game/BalanceConfig.ts\n+++ b/src/game/BalanceConfig.ts\n@@ -121,23 +121,34 @@ export interface StructureBaseStats {\n  * - Substation: 80°C (very fragile, needs protection)\n  * - Turbine: 150°C (moderate, needs cooling)\n  * - Ventilator: 200°C (can handle some heat)\n- * - Insulator: 300°C (designed to handle heat)\n  * - Heat Exchanger: 400°C (built for heat transfer)\n- * - Fuel Rod: 5000°C (extremely heat resistant)\n+ * - Fuel Rod: 1000°C (can overheat with clustered fuel)\n+ * - Insulator: 1000°C (heat resistant, designed to contain fuel)\n  *\n- * Conductivity:\n- * - Fuel Rod: 1.5 (high - heat spreads from fuel)\n- * - Heat Exchanger: 2.0 (very high - designed for transfer)\n- * - Turbine, Ventilator, Substation: 1.0 (normal)\n- * - Empty: 0.3 (low - air gap)\n- * - Insulator: 0.05 (very low - designed to block)\n+ * Heat Exchange Factor (conductivity):\n+ * The rate controls how fast heat flows between adjacent cells.\n+ * Rate of 1.0 = cells fully equalize temperature in one tick (per neighbor pair)\n+ * Rate of 0.5 = cells move halfway toward equalization (per neighbor pair)\n+ * Rate of 0.0 = no heat exchange\n+ * The effective rate between two cells is the average of their factors.\n+ *\n+ * Note: Since each cell has up to 4 neighbors, total heat flow per tick is\n+ * the sum of all pairwise exchanges. Values are calibrated to produce similar\n+ * heat spread rates as the original algorithm.\n+ *\n+ * - Void Cell: 1.0 (maximum - pulls heat extremely fast)\n+ * - Heat Exchanger: 0.4 (very fast transfer)\n+ * - Fuel Rod: 0.3 (fast - heat spreads from fuel)\n+ * - Turbine, Ventilator, Substation: 0.2 (normal)\n+ * - Empty: 0.06 (slow - air gap)\n+ * - Insulator: 0.005 (extremely slow - designed to block heat)\n  */\n export const STRUCTURE_BASE_STATS: Record<StructureType, StructureBaseStats> = {\n   [StructureType.Empty]: {\n     name: 'Empty',\n     baseCost: 0,\n     meltTemp: Infinity,\n-    conductivity: 0.3,\n+    conductivity: 0.06,\n     heatGeneration: 0,\n     heatDissipation: 0,\n     powerGeneration: 0,\n@@ -151,8 +162,8 @@ export const STRUCTURE_BASE_STATS: Record<StructureType, StructureBaseStats> = {\n   [StructureType.FuelRod]: {\n     name: 'Fuel Rod',\n     baseCost: 10,\n-    meltTemp: 2500, // Lowered to make meltdowns achievable with clustered fuel\n-    conductivity: 1.5,\n+    meltTemp: 1000, // Lowered to make meltdowns achievable with new heat exchange algorithm\n+    conductivity: 0.3,\n     heatGeneration: 100, // T1: 100 heat/tick - high enough to cause meltdowns when clustered\n     heatDissipation: 0,\n     powerGeneration: 0,\n@@ -167,7 +178,7 @@ export const STRUCTURE_BASE_STATS: Record<StructureType, StructureBaseStats> = {\n     name: 'Ventilator',\n     baseCost: 10,\n     meltTemp: 200,\n-    conductivity: 1.0,\n+    conductivity: 0.2,\n     heatGeneration: 0,\n     heatDissipation: 5, // T1: 5 heat/tick removed\n     powerGeneration: 0,\n@@ -182,7 +193,7 @@ export const STRUCTURE_BASE_STATS: Record<StructureType, StructureBaseStats> = {\n     name: 'Heat Exchanger',\n     baseCost: 15,\n     meltTemp: 400,\n-    conductivity: 2.0,\n+    conductivity: 0.4,\n     heatGeneration: 0,\n     heatDissipation: 0,\n     powerGeneration: 0,\n@@ -196,8 +207,8 @@ export const STRUCTURE_BASE_STATS: Record<StructureType, StructureBaseStats> = {\n   [StructureType.Insulator]: {\n     name: 'Insulator',\n     baseCost: 8,\n-    meltTemp: 300,\n-    conductivity: 0.05,\n+    meltTemp: 1000,\n+    conductivity: 0.005,\n     heatGeneration: 0,\n     heatDissipation: 0,\n     powerGeneration: 0,\n@@ -212,7 +223,7 @@ export const STRUCTURE_BASE_STATS: Record<StructureType, StructureBaseStats> = {\n     name: 'Turbine',\n     baseCost: 25, // T1: 25, T2: 2500 (close to user's 250 for T2 if we adjust)\n     meltTemp: 150,\n-    conductivity: 1.0,\n+    conductivity: 0.2,\n     heatGeneration: 0,\n     heatDissipation: 0,\n     powerGeneration: 0.1, // Power per heat consumed\n@@ -227,7 +238,7 @@ export const STRUCTURE_BASE_STATS: Record<StructureType, StructureBaseStats> = {\n     name: 'Substation',\n     baseCost: 50, // T1: 50, T2: 5000 (close to user's 500 for T2 if we adjust)\n     meltTemp: 80,\n-    conductivity: 1.0,\n+    conductivity: 0.2,\n     heatGeneration: 0,\n     heatDissipation: 0,\n     powerGeneration: 0,\n@@ -242,7 +253,7 @@ export const STRUCTURE_BASE_STATS: Record<StructureType, StructureBaseStats> = {\n     name: 'Void Cell',\n     baseCost: 100,\n     meltTemp: Infinity, // Cannot melt\n-    conductivity: 10.0, // Extremely high - sucks in heat\n+    conductivity: 1.0, // Maximum - pulls heat extremely fast\n     heatGeneration: 0,\n     heatDissipation: 50, // Destroys heat\n     powerGeneration: 0,\n@@ -260,7 +271,7 @@ export const STRUCTURE_BASE_STATS: Record<StructureType, StructureBaseStats> = {\n \n export const FUEL_ADJACENCY = {\n   /** Heat multiplier per adjacent fuel rod (4-way orthogonal) */\n-  BONUS_PER_ADJACENT: 0.5, // 1 adjacent = 1.5x, 2 = 2x, 3 = 2.5x, 4 = 3x\n+  BONUS_PER_ADJACENT: 1.0, // 1 adjacent = 2x, 2 = 3x, 3 = 4x, 4 = 5x (500%)\n };\n \n // =============================================================================\n@@ -356,7 +367,7 @@ export const UPGRADE_DEFINITIONS: Record<UpgradeType, UpgradeDefinition> = {\n     baseCost: 200,\n     costMultiplier: 2.0,\n     maxLevel: 10,\n-    improvementPerLevel: 0.2, // +0.2 conductivity per level\n+    improvementPerLevel: 0.03, // +0.03 heat exchange per level (0.15 base + 0.3 max = 0.45)\n     isMultiplicative: false,\n   },\n \ndiff --git a/src/game/HeatGame.test.ts b/src/game/HeatGame.test.ts\nindex 6cd0e6d..3ec16e2 100644\n--- a/src/game/HeatGame.test.ts\n+++ b/src/game/HeatGame.test.ts\n@@ -11,13 +11,23 @@ import {\n import { getStructureCost, STRUCTURE_BASE_STATS } from './BalanceConfig.js';\n \n /**\n- * Build a heat trap that causes meltdown - 2 fuel rods surrounded by insulation\n+ * Build a heat trap that causes meltdown - 2x2 cluster of fuel rods surrounded by insulation\n+ * Each fuel rod has 2 adjacent fuel rods, giving 2x heat multiplier (1 + 0.5*2)\n+ * Total heat generation: 4 * 100 * 2 = 800 heat/tick\n  */\n function buildMeltdownTrap(game: HeatGame, centerX = 8, centerY = 8): void {\n+  // 2x2 fuel rod cluster\n   game.build(centerX, centerY, StructureType.FuelRod, Tier.T1);\n+  game.build(centerX + 1, centerY, StructureType.FuelRod, Tier.T1);\n   game.build(centerX, centerY + 1, StructureType.FuelRod, Tier.T1);\n-  // Surround with insulation to trap heat\n-  for (const [dx, dy] of [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [1, 1], [-1, 2], [0, 2], [1, 2]]) {\n+  game.build(centerX + 1, centerY + 1, StructureType.FuelRod, Tier.T1);\n+  // Surround with insulation to trap heat (forms a ring around the 2x2 cluster)\n+  for (const [dx, dy] of [\n+    [-1, -1], [0, -1], [1, -1], [2, -1],  // top row\n+    [-1, 0], [2, 0],                       // middle rows (sides)\n+    [-1, 1], [2, 1],\n+    [-1, 2], [0, 2], [1, 2], [2, 2],       // bottom row\n+  ]) {\n     game.build(centerX + dx, centerY + dy, StructureType.Insulator, Tier.T1);\n   }\n }\ndiff --git a/src/game/PhysicsEngine.test.ts b/src/game/PhysicsEngine.test.ts\nindex 0daa6ba..04e1127 100644\n--- a/src/game/PhysicsEngine.test.ts\n+++ b/src/game/PhysicsEngine.test.ts\n@@ -79,6 +79,101 @@ describe('PhysicsEngine', () => {\n \n       expect(insulatorHeatAfter).toBeGreaterThan(grid.getCell(5, 5)!.heat);\n     });\n+\n+    it('heat is conserved during cell-to-cell transfer (interior cells)', () => {\n+      // Place cells in the interior so no heat is lost to environment\n+      // Use cells away from edges (need at least 1 cell buffer from all sides)\n+      grid.getCellRef(5, 5)!.heat = 1000;\n+      grid.getCellRef(5, 6)!.heat = 0;\n+      grid.getCellRef(6, 5)!.heat = 500;\n+      grid.getCellRef(6, 6)!.heat = 200;\n+\n+      // Calculate total heat before (all cells in grid)\n+      let totalBefore = 0;\n+      for (let y = 0; y < 16; y++) {\n+        for (let x = 0; x < 16; x++) {\n+          totalBefore += grid.getCell(x, y)!.heat;\n+        }\n+      }\n+\n+      const heatLostToEnv = physics.processHeatTransfer();\n+\n+      // Calculate total heat after\n+      let totalAfter = 0;\n+      for (let y = 0; y < 16; y++) {\n+        for (let x = 0; x < 16; x++) {\n+          totalAfter += grid.getCell(x, y)!.heat;\n+        }\n+      }\n+\n+      // Heat lost to environment + remaining heat should equal original\n+      expect(totalAfter + heatLostToEnv).toBeCloseTo(totalBefore, 5);\n+    });\n+\n+    it('high exchange rate cells converge quickly', () => {\n+      // Two void cells (rate 1.0 each, avg = 1.0) should exchange heat quickly\n+      // Surround with insulators (rate 0.01) to isolate the exchange\n+      const cell1 = grid.getCellRef(5, 5)!;\n+      cell1.structure = StructureType.VoidCell;\n+      cell1.heat = 100;\n+\n+      const cell2 = grid.getCellRef(5, 6)!;\n+      cell2.structure = StructureType.VoidCell;\n+      cell2.heat = 200;\n+\n+      // Surround with insulators at average temp to minimize interference\n+      const avgTemp = 150;\n+      for (const [x, y] of [[5, 4], [4, 5], [6, 5], [4, 6], [6, 6], [5, 7]]) {\n+        const neighbor = grid.getCellRef(x, y)!;\n+        neighbor.structure = StructureType.Insulator;\n+        neighbor.heat = avgTemp;\n+      }\n+\n+      physics.processHeatTransfer();\n+\n+      // With rate 1.0, the void cells should nearly equalize (diff reduces to near 0)\n+      // Small deviation from insulator neighbors (avg rate ~0.5 with insulators)\n+      const heat1 = grid.getCell(5, 5)!.heat;\n+      const heat2 = grid.getCell(5, 6)!.heat;\n+\n+      // They should have moved very close to each other\n+      expect(heat1).toBeGreaterThan(130);\n+      expect(heat2).toBeLessThan(170);\n+      expect(heat2 - heat1).toBeLessThan(40); // Started at 100 diff, should be much smaller\n+    });\n+\n+    it('moderate exchange rate cells move toward equalization', () => {\n+      // Two turbines (rate 0.2 each, avg = 0.2)\n+      // Surround with insulators to minimize exchange with other neighbors\n+      const cell1 = grid.getCellRef(5, 5)!;\n+      cell1.structure = StructureType.Turbine;\n+      cell1.heat = 100;\n+\n+      const cell2 = grid.getCellRef(5, 6)!;\n+      cell2.structure = StructureType.Turbine;\n+      cell2.heat = 200;\n+\n+      // Set all other neighbors to same average temp to isolate the exchange\n+      // Use insulators (rate 0.01) to minimize interference\n+      for (const [x, y] of [[5, 4], [4, 5], [6, 5], [4, 6], [6, 6], [5, 7]]) {\n+        const neighbor = grid.getCellRef(x, y)!;\n+        neighbor.structure = StructureType.Insulator;\n+        neighbor.heat = 150; // average of 100 and 200\n+      }\n+\n+      physics.processHeatTransfer();\n+\n+      // The two turbines should have moved toward each other\n+      // With rate 0.2, diff of 100 reduces by 20, so cells move ~10 toward each other\n+      const heat1 = grid.getCell(5, 5)!.heat;\n+      const heat2 = grid.getCell(5, 6)!.heat;\n+\n+      // Heat1 should have increased, heat2 should have decreased\n+      expect(heat1).toBeGreaterThan(100);\n+      expect(heat2).toBeLessThan(200);\n+      // Their difference should have reduced\n+      expect(heat2 - heat1).toBeLessThan(100);\n+    });\n   });\n \n   describe('meltdown behavior', () => {\ndiff --git a/src/game/PhysicsEngine.ts b/src/game/PhysicsEngine.ts\nindex 8c088bb..116345f 100644\n--- a/src/game/PhysicsEngine.ts\n+++ b/src/game/PhysicsEngine.ts\n@@ -240,25 +240,31 @@ export class PhysicsEngine {\n   }\n \n   /**\n-   * Get effective conductivity for a cell (with upgrades)\n+   * Get effective heat exchange factor for a cell (with upgrades)\n+   * Returns a value in [0, 1] range where:\n+   * - 1.0 = cells fully equalize temperature in one tick\n+   * - 0.5 = cells move halfway toward equalization\n+   * - 0.0 = no heat exchange\n    */\n   getEffectiveConductivity(cell: Cell): number {\n     const baseConductivity = STRUCTURE_BASE_STATS[cell.structure].conductivity;\n+    let conductivity = baseConductivity;\n \n     if (cell.structure === StructureType.Turbine) {\n       const level = this.getUpgradeLevel(UpgradeType.TurbineConductivity);\n       const definition = UPGRADE_DEFINITIONS[UpgradeType.TurbineConductivity];\n-      return baseConductivity + (level * definition.improvementPerLevel);\n+      conductivity = baseConductivity + (level * definition.improvementPerLevel);\n     }\n \n     if (cell.structure === StructureType.Insulator) {\n       const level = this.getUpgradeLevel(UpgradeType.InsulatorConductivity);\n       if (level > 0) {\n-        return baseConductivity * Math.pow(0.5, level);\n+        conductivity = baseConductivity * Math.pow(0.5, level);\n       }\n     }\n \n-    return baseConductivity;\n+    // Clamp to [0, 1] range to ensure algorithm stability\n+    return Math.min(1, Math.max(0, conductivity));\n   }\n \n   /**\n@@ -388,6 +394,15 @@ export class PhysicsEngine {\n   /**\n    * Process heat transfer between cells\n    * Returns the total heat lost to the environment (edge cells)\n+   *\n+   * Heat Exchange Algorithm:\n+   * - Each cell pair exchanges heat based on their average heat exchange factor\n+   * - When avgRate = 1: cells fully equalize temperature\n+   * - When avgRate = 0.5: cells move halfway toward equalization\n+   * - When avgRate = 0: no heat exchange\n+   * - Formula: transfer = tempDiff * avgRate / 2\n+   * - All calculations use temperatures from start of tick (order-independent)\n+   * - Total heat is conserved (each transfer adds to one cell, subtracts from other)\n    */\n   processHeatTransfer(): number {\n     const grid = this.gridManager.getGridRef();\n@@ -399,21 +414,22 @@ export class PhysicsEngine {\n       heatDeltas.push(new Array(gridSize).fill(0));\n     }\n \n-    const transferRate = CORE_SETTINGS.BASE_HEAT_TRANSFER_RATE;\n-\n     for (let y = 0; y < gridSize; y++) {\n       for (let x = 0; x < gridSize; x++) {\n         const cell = grid[y][x];\n-        const cellConductivity = this.getEffectiveConductivity(cell);\n+        const cellFactor = this.getEffectiveConductivity(cell);\n         const neighbors = this.gridManager.getNeighbors(x, y);\n \n         for (const neighbor of neighbors) {\n-          const neighborConductivity = this.getEffectiveConductivity(neighbor);\n+          const neighborFactor = this.getEffectiveConductivity(neighbor);\n           const heatDiff = cell.heat - neighbor.heat;\n \n+          // Only process when cell is hotter (each pair processed once)\n           if (heatDiff > 0) {\n-            const conductivity = Math.min(cellConductivity, neighborConductivity);\n-            const transfer = heatDiff * transferRate * conductivity;\n+            // Average of both cells' heat exchange factors\n+            const avgRate = (cellFactor + neighborFactor) / 2;\n+            // Transfer half the diff scaled by rate (rate=1 means full equalization)\n+            const transfer = heatDiff * avgRate / 2;\n             heatDeltas[y][x] -= transfer;\n             heatDeltas[neighbor.y][neighbor.x] += transfer;\n           }",
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "/home/runner/work/claudetest123/claudetest123/test-results",
+        "repeatEach": 1,
+        "retries": 2,
+        "metadata": {
+          "ci": {
+            "commitHref": "https://github.com/bjuergens/claudetest123/commit/fc427d758ae6157c799fce2f8c457198bc59c399",
+            "commitHash": "fc427d758ae6157c799fce2f8c457198bc59c399",
+            "prHref": "https://github.com/bjuergens/claudetest123/pull/14",
+            "prTitle": "Rebuild heat exchange algorithm with averaging formula",
+            "prBaseHash": "e5ebbcc3a97809aa0d1588ed470b7e49c44e075e",
+            "buildHref": "https://github.com/bjuergens/claudetest123/actions/runs/21551790132"
+          },
+          "gitCommit": {
+            "shortHash": "fc427d7",
+            "hash": "fc427d758ae6157c799fce2f8c457198bc59c399",
+            "subject": "Merge 410fe98e380763958003592e855bb78b10b5318e into e5ebbcc3a97809aa0d1588ed470b7e49c44e075e",
+            "body": "Merge 410fe98e380763958003592e855bb78b10b5318e into e5ebbcc3a97809aa0d1588ed470b7e49c44e075e\n",
+            "author": {
+              "name": "Björn Jürgens",
+              "email": "4362465+bjuergens@users.noreply.github.com",
+              "time": 1769897620000
+            },
+            "committer": {
+              "name": "GitHub",
+              "email": "noreply@github.com",
+              "time": 1769897620000
+            },
+            "branch": "HEAD"
+          },
+          "gitDiff": "diff --git a/src/game/BalanceConfig.ts b/src/game/BalanceConfig.ts\nindex 933fa42..2d3f6af 100644\n--- a/src/game/BalanceConfig.ts\n+++ b/src/game/BalanceConfig.ts\n@@ -121,23 +121,34 @@ export interface StructureBaseStats {\n  * - Substation: 80°C (very fragile, needs protection)\n  * - Turbine: 150°C (moderate, needs cooling)\n  * - Ventilator: 200°C (can handle some heat)\n- * - Insulator: 300°C (designed to handle heat)\n  * - Heat Exchanger: 400°C (built for heat transfer)\n- * - Fuel Rod: 5000°C (extremely heat resistant)\n+ * - Fuel Rod: 1000°C (can overheat with clustered fuel)\n+ * - Insulator: 1000°C (heat resistant, designed to contain fuel)\n  *\n- * Conductivity:\n- * - Fuel Rod: 1.5 (high - heat spreads from fuel)\n- * - Heat Exchanger: 2.0 (very high - designed for transfer)\n- * - Turbine, Ventilator, Substation: 1.0 (normal)\n- * - Empty: 0.3 (low - air gap)\n- * - Insulator: 0.05 (very low - designed to block)\n+ * Heat Exchange Factor (conductivity):\n+ * The rate controls how fast heat flows between adjacent cells.\n+ * Rate of 1.0 = cells fully equalize temperature in one tick (per neighbor pair)\n+ * Rate of 0.5 = cells move halfway toward equalization (per neighbor pair)\n+ * Rate of 0.0 = no heat exchange\n+ * The effective rate between two cells is the average of their factors.\n+ *\n+ * Note: Since each cell has up to 4 neighbors, total heat flow per tick is\n+ * the sum of all pairwise exchanges. Values are calibrated to produce similar\n+ * heat spread rates as the original algorithm.\n+ *\n+ * - Void Cell: 1.0 (maximum - pulls heat extremely fast)\n+ * - Heat Exchanger: 0.4 (very fast transfer)\n+ * - Fuel Rod: 0.3 (fast - heat spreads from fuel)\n+ * - Turbine, Ventilator, Substation: 0.2 (normal)\n+ * - Empty: 0.06 (slow - air gap)\n+ * - Insulator: 0.005 (extremely slow - designed to block heat)\n  */\n export const STRUCTURE_BASE_STATS: Record<StructureType, StructureBaseStats> = {\n   [StructureType.Empty]: {\n     name: 'Empty',\n     baseCost: 0,\n     meltTemp: Infinity,\n-    conductivity: 0.3,\n+    conductivity: 0.06,\n     heatGeneration: 0,\n     heatDissipation: 0,\n     powerGeneration: 0,\n@@ -151,8 +162,8 @@ export const STRUCTURE_BASE_STATS: Record<StructureType, StructureBaseStats> = {\n   [StructureType.FuelRod]: {\n     name: 'Fuel Rod',\n     baseCost: 10,\n-    meltTemp: 2500, // Lowered to make meltdowns achievable with clustered fuel\n-    conductivity: 1.5,\n+    meltTemp: 1000, // Lowered to make meltdowns achievable with new heat exchange algorithm\n+    conductivity: 0.3,\n     heatGeneration: 100, // T1: 100 heat/tick - high enough to cause meltdowns when clustered\n     heatDissipation: 0,\n     powerGeneration: 0,\n@@ -167,7 +178,7 @@ export const STRUCTURE_BASE_STATS: Record<StructureType, StructureBaseStats> = {\n     name: 'Ventilator',\n     baseCost: 10,\n     meltTemp: 200,\n-    conductivity: 1.0,\n+    conductivity: 0.2,\n     heatGeneration: 0,\n     heatDissipation: 5, // T1: 5 heat/tick removed\n     powerGeneration: 0,\n@@ -182,7 +193,7 @@ export const STRUCTURE_BASE_STATS: Record<StructureType, StructureBaseStats> = {\n     name: 'Heat Exchanger',\n     baseCost: 15,\n     meltTemp: 400,\n-    conductivity: 2.0,\n+    conductivity: 0.4,\n     heatGeneration: 0,\n     heatDissipation: 0,\n     powerGeneration: 0,\n@@ -196,8 +207,8 @@ export const STRUCTURE_BASE_STATS: Record<StructureType, StructureBaseStats> = {\n   [StructureType.Insulator]: {\n     name: 'Insulator',\n     baseCost: 8,\n-    meltTemp: 300,\n-    conductivity: 0.05,\n+    meltTemp: 1000,\n+    conductivity: 0.005,\n     heatGeneration: 0,\n     heatDissipation: 0,\n     powerGeneration: 0,\n@@ -212,7 +223,7 @@ export const STRUCTURE_BASE_STATS: Record<StructureType, StructureBaseStats> = {\n     name: 'Turbine',\n     baseCost: 25, // T1: 25, T2: 2500 (close to user's 250 for T2 if we adjust)\n     meltTemp: 150,\n-    conductivity: 1.0,\n+    conductivity: 0.2,\n     heatGeneration: 0,\n     heatDissipation: 0,\n     powerGeneration: 0.1, // Power per heat consumed\n@@ -227,7 +238,7 @@ export const STRUCTURE_BASE_STATS: Record<StructureType, StructureBaseStats> = {\n     name: 'Substation',\n     baseCost: 50, // T1: 50, T2: 5000 (close to user's 500 for T2 if we adjust)\n     meltTemp: 80,\n-    conductivity: 1.0,\n+    conductivity: 0.2,\n     heatGeneration: 0,\n     heatDissipation: 0,\n     powerGeneration: 0,\n@@ -242,7 +253,7 @@ export const STRUCTURE_BASE_STATS: Record<StructureType, StructureBaseStats> = {\n     name: 'Void Cell',\n     baseCost: 100,\n     meltTemp: Infinity, // Cannot melt\n-    conductivity: 10.0, // Extremely high - sucks in heat\n+    conductivity: 1.0, // Maximum - pulls heat extremely fast\n     heatGeneration: 0,\n     heatDissipation: 50, // Destroys heat\n     powerGeneration: 0,\n@@ -260,7 +271,7 @@ export const STRUCTURE_BASE_STATS: Record<StructureType, StructureBaseStats> = {\n \n export const FUEL_ADJACENCY = {\n   /** Heat multiplier per adjacent fuel rod (4-way orthogonal) */\n-  BONUS_PER_ADJACENT: 0.5, // 1 adjacent = 1.5x, 2 = 2x, 3 = 2.5x, 4 = 3x\n+  BONUS_PER_ADJACENT: 1.0, // 1 adjacent = 2x, 2 = 3x, 3 = 4x, 4 = 5x (500%)\n };\n \n // =============================================================================\n@@ -356,7 +367,7 @@ export const UPGRADE_DEFINITIONS: Record<UpgradeType, UpgradeDefinition> = {\n     baseCost: 200,\n     costMultiplier: 2.0,\n     maxLevel: 10,\n-    improvementPerLevel: 0.2, // +0.2 conductivity per level\n+    improvementPerLevel: 0.03, // +0.03 heat exchange per level (0.15 base + 0.3 max = 0.45)\n     isMultiplicative: false,\n   },\n \ndiff --git a/src/game/HeatGame.test.ts b/src/game/HeatGame.test.ts\nindex 6cd0e6d..3ec16e2 100644\n--- a/src/game/HeatGame.test.ts\n+++ b/src/game/HeatGame.test.ts\n@@ -11,13 +11,23 @@ import {\n import { getStructureCost, STRUCTURE_BASE_STATS } from './BalanceConfig.js';\n \n /**\n- * Build a heat trap that causes meltdown - 2 fuel rods surrounded by insulation\n+ * Build a heat trap that causes meltdown - 2x2 cluster of fuel rods surrounded by insulation\n+ * Each fuel rod has 2 adjacent fuel rods, giving 2x heat multiplier (1 + 0.5*2)\n+ * Total heat generation: 4 * 100 * 2 = 800 heat/tick\n  */\n function buildMeltdownTrap(game: HeatGame, centerX = 8, centerY = 8): void {\n+  // 2x2 fuel rod cluster\n   game.build(centerX, centerY, StructureType.FuelRod, Tier.T1);\n+  game.build(centerX + 1, centerY, StructureType.FuelRod, Tier.T1);\n   game.build(centerX, centerY + 1, StructureType.FuelRod, Tier.T1);\n-  // Surround with insulation to trap heat\n-  for (const [dx, dy] of [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [1, 1], [-1, 2], [0, 2], [1, 2]]) {\n+  game.build(centerX + 1, centerY + 1, StructureType.FuelRod, Tier.T1);\n+  // Surround with insulation to trap heat (forms a ring around the 2x2 cluster)\n+  for (const [dx, dy] of [\n+    [-1, -1], [0, -1], [1, -1], [2, -1],  // top row\n+    [-1, 0], [2, 0],                       // middle rows (sides)\n+    [-1, 1], [2, 1],\n+    [-1, 2], [0, 2], [1, 2], [2, 2],       // bottom row\n+  ]) {\n     game.build(centerX + dx, centerY + dy, StructureType.Insulator, Tier.T1);\n   }\n }\ndiff --git a/src/game/PhysicsEngine.test.ts b/src/game/PhysicsEngine.test.ts\nindex 0daa6ba..04e1127 100644\n--- a/src/game/PhysicsEngine.test.ts\n+++ b/src/game/PhysicsEngine.test.ts\n@@ -79,6 +79,101 @@ describe('PhysicsEngine', () => {\n \n       expect(insulatorHeatAfter).toBeGreaterThan(grid.getCell(5, 5)!.heat);\n     });\n+\n+    it('heat is conserved during cell-to-cell transfer (interior cells)', () => {\n+      // Place cells in the interior so no heat is lost to environment\n+      // Use cells away from edges (need at least 1 cell buffer from all sides)\n+      grid.getCellRef(5, 5)!.heat = 1000;\n+      grid.getCellRef(5, 6)!.heat = 0;\n+      grid.getCellRef(6, 5)!.heat = 500;\n+      grid.getCellRef(6, 6)!.heat = 200;\n+\n+      // Calculate total heat before (all cells in grid)\n+      let totalBefore = 0;\n+      for (let y = 0; y < 16; y++) {\n+        for (let x = 0; x < 16; x++) {\n+          totalBefore += grid.getCell(x, y)!.heat;\n+        }\n+      }\n+\n+      const heatLostToEnv = physics.processHeatTransfer();\n+\n+      // Calculate total heat after\n+      let totalAfter = 0;\n+      for (let y = 0; y < 16; y++) {\n+        for (let x = 0; x < 16; x++) {\n+          totalAfter += grid.getCell(x, y)!.heat;\n+        }\n+      }\n+\n+      // Heat lost to environment + remaining heat should equal original\n+      expect(totalAfter + heatLostToEnv).toBeCloseTo(totalBefore, 5);\n+    });\n+\n+    it('high exchange rate cells converge quickly', () => {\n+      // Two void cells (rate 1.0 each, avg = 1.0) should exchange heat quickly\n+      // Surround with insulators (rate 0.01) to isolate the exchange\n+      const cell1 = grid.getCellRef(5, 5)!;\n+      cell1.structure = StructureType.VoidCell;\n+      cell1.heat = 100;\n+\n+      const cell2 = grid.getCellRef(5, 6)!;\n+      cell2.structure = StructureType.VoidCell;\n+      cell2.heat = 200;\n+\n+      // Surround with insulators at average temp to minimize interference\n+      const avgTemp = 150;\n+      for (const [x, y] of [[5, 4], [4, 5], [6, 5], [4, 6], [6, 6], [5, 7]]) {\n+        const neighbor = grid.getCellRef(x, y)!;\n+        neighbor.structure = StructureType.Insulator;\n+        neighbor.heat = avgTemp;\n+      }\n+\n+      physics.processHeatTransfer();\n+\n+      // With rate 1.0, the void cells should nearly equalize (diff reduces to near 0)\n+      // Small deviation from insulator neighbors (avg rate ~0.5 with insulators)\n+      const heat1 = grid.getCell(5, 5)!.heat;\n+      const heat2 = grid.getCell(5, 6)!.heat;\n+\n+      // They should have moved very close to each other\n+      expect(heat1).toBeGreaterThan(130);\n+      expect(heat2).toBeLessThan(170);\n+      expect(heat2 - heat1).toBeLessThan(40); // Started at 100 diff, should be much smaller\n+    });\n+\n+    it('moderate exchange rate cells move toward equalization', () => {\n+      // Two turbines (rate 0.2 each, avg = 0.2)\n+      // Surround with insulators to minimize exchange with other neighbors\n+      const cell1 = grid.getCellRef(5, 5)!;\n+      cell1.structure = StructureType.Turbine;\n+      cell1.heat = 100;\n+\n+      const cell2 = grid.getCellRef(5, 6)!;\n+      cell2.structure = StructureType.Turbine;\n+      cell2.heat = 200;\n+\n+      // Set all other neighbors to same average temp to isolate the exchange\n+      // Use insulators (rate 0.01) to minimize interference\n+      for (const [x, y] of [[5, 4], [4, 5], [6, 5], [4, 6], [6, 6], [5, 7]]) {\n+        const neighbor = grid.getCellRef(x, y)!;\n+        neighbor.structure = StructureType.Insulator;\n+        neighbor.heat = 150; // average of 100 and 200\n+      }\n+\n+      physics.processHeatTransfer();\n+\n+      // The two turbines should have moved toward each other\n+      // With rate 0.2, diff of 100 reduces by 20, so cells move ~10 toward each other\n+      const heat1 = grid.getCell(5, 5)!.heat;\n+      const heat2 = grid.getCell(5, 6)!.heat;\n+\n+      // Heat1 should have increased, heat2 should have decreased\n+      expect(heat1).toBeGreaterThan(100);\n+      expect(heat2).toBeLessThan(200);\n+      // Their difference should have reduced\n+      expect(heat2 - heat1).toBeLessThan(100);\n+    });\n   });\n \n   describe('meltdown behavior', () => {\ndiff --git a/src/game/PhysicsEngine.ts b/src/game/PhysicsEngine.ts\nindex 8c088bb..116345f 100644\n--- a/src/game/PhysicsEngine.ts\n+++ b/src/game/PhysicsEngine.ts\n@@ -240,25 +240,31 @@ export class PhysicsEngine {\n   }\n \n   /**\n-   * Get effective conductivity for a cell (with upgrades)\n+   * Get effective heat exchange factor for a cell (with upgrades)\n+   * Returns a value in [0, 1] range where:\n+   * - 1.0 = cells fully equalize temperature in one tick\n+   * - 0.5 = cells move halfway toward equalization\n+   * - 0.0 = no heat exchange\n    */\n   getEffectiveConductivity(cell: Cell): number {\n     const baseConductivity = STRUCTURE_BASE_STATS[cell.structure].conductivity;\n+    let conductivity = baseConductivity;\n \n     if (cell.structure === StructureType.Turbine) {\n       const level = this.getUpgradeLevel(UpgradeType.TurbineConductivity);\n       const definition = UPGRADE_DEFINITIONS[UpgradeType.TurbineConductivity];\n-      return baseConductivity + (level * definition.improvementPerLevel);\n+      conductivity = baseConductivity + (level * definition.improvementPerLevel);\n     }\n \n     if (cell.structure === StructureType.Insulator) {\n       const level = this.getUpgradeLevel(UpgradeType.InsulatorConductivity);\n       if (level > 0) {\n-        return baseConductivity * Math.pow(0.5, level);\n+        conductivity = baseConductivity * Math.pow(0.5, level);\n       }\n     }\n \n-    return baseConductivity;\n+    // Clamp to [0, 1] range to ensure algorithm stability\n+    return Math.min(1, Math.max(0, conductivity));\n   }\n \n   /**\n@@ -388,6 +394,15 @@ export class PhysicsEngine {\n   /**\n    * Process heat transfer between cells\n    * Returns the total heat lost to the environment (edge cells)\n+   *\n+   * Heat Exchange Algorithm:\n+   * - Each cell pair exchanges heat based on their average heat exchange factor\n+   * - When avgRate = 1: cells fully equalize temperature\n+   * - When avgRate = 0.5: cells move halfway toward equalization\n+   * - When avgRate = 0: no heat exchange\n+   * - Formula: transfer = tempDiff * avgRate / 2\n+   * - All calculations use temperatures from start of tick (order-independent)\n+   * - Total heat is conserved (each transfer adds to one cell, subtracts from other)\n    */\n   processHeatTransfer(): number {\n     const grid = this.gridManager.getGridRef();\n@@ -399,21 +414,22 @@ export class PhysicsEngine {\n       heatDeltas.push(new Array(gridSize).fill(0));\n     }\n \n-    const transferRate = CORE_SETTINGS.BASE_HEAT_TRANSFER_RATE;\n-\n     for (let y = 0; y < gridSize; y++) {\n       for (let x = 0; x < gridSize; x++) {\n         const cell = grid[y][x];\n-        const cellConductivity = this.getEffectiveConductivity(cell);\n+        const cellFactor = this.getEffectiveConductivity(cell);\n         const neighbors = this.gridManager.getNeighbors(x, y);\n \n         for (const neighbor of neighbors) {\n-          const neighborConductivity = this.getEffectiveConductivity(neighbor);\n+          const neighborFactor = this.getEffectiveConductivity(neighbor);\n           const heatDiff = cell.heat - neighbor.heat;\n \n+          // Only process when cell is hotter (each pair processed once)\n           if (heatDiff > 0) {\n-            const conductivity = Math.min(cellConductivity, neighborConductivity);\n-            const transfer = heatDiff * transferRate * conductivity;\n+            // Average of both cells' heat exchange factors\n+            const avgRate = (cellFactor + neighborFactor) / 2;\n+            // Transfer half the diff scaled by rate (rate=1 means full equalization)\n+            const transfer = heatDiff * avgRate / 2;\n             heatDeltas[y][x] -= transfer;\n             heatDeltas[neighbor.y][neighbor.x] += transfer;\n           }",
+          "actualWorkers": 1
+        },
+        "id": "chromium",
+        "name": "chromium",
+        "testDir": "/home/runner/work/claudetest123/claudetest123/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 30000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "html",
+        {
+          "outputFolder": "playwright-report"
+        }
+      ],
+      [
+        "list",
+        null
+      ],
+      [
+        "json",
+        {
+          "outputFile": "test-results/results.json"
+        }
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "runAgents": "none",
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.58.0",
+    "workers": 1,
+    "webServer": {
+      "command": "npm run serve",
+      "url": "http://localhost:3000",
+      "reuseExistingServer": false,
+      "timeout": 120000
+    }
+  },
+  "suites": [
+    {
+      "title": "heat-game.spec.ts",
+      "file": "heat-game.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Heat Game E2E Tests",
+          "file": "heat-game.spec.ts",
+          "line": 40,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should load the game and display initial state",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 446,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-31T22:14:37.150Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-2428b-e-and-display-initial-state-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-2428b-e-and-display-initial-state-chromium/attachments/browser-logs-252e98eebb6d2a6fd5612fd184955e74f7d8fa0e.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-1f7f90ca45f76c134f4d",
+              "file": "heat-game.spec.ts",
+              "line": 86,
+              "column": 3
+            },
+            {
+              "title": "should place a Fuel Rod on the grid",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 624,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-31T22:14:38.462Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-05fff-lace-a-Fuel-Rod-on-the-grid-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-05fff-lace-a-Fuel-Rod-on-the-grid-chromium/attachments/browser-logs-daa597c1e58cdd3735064670bc098a56f535a7d5.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-a31bde006f3c29450fad",
+              "file": "heat-game.spec.ts",
+              "line": 116,
+              "column": 3
+            },
+            {
+              "title": "should place multiple structures and observe heat dynamics",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1206,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-31T22:14:39.099Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-edba4-s-and-observe-heat-dynamics-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-edba4-s-and-observe-heat-dynamics-chromium/attachments/browser-logs-a9526112523c68aa24fe78334be3ec2af4a1ba62.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-2ed04ebe32d9c471053a",
+              "file": "heat-game.spec.ts",
+              "line": 148,
+              "column": 3
+            },
+            {
+              "title": "should demolish a structure with right-click",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 530,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-31T22:14:40.324Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-53724--structure-with-right-click-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-53724--structure-with-right-click-chromium/attachments/browser-logs-d97b4f4e87a5cc31e1b5dee61d33b7cf6ee7bb2f.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-ff211d87a2ad19067056",
+              "file": "heat-game.spec.ts",
+              "line": 185,
+              "column": 3
+            },
+            {
+              "title": "should build a power generation setup",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1707,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-31T22:14:40.866Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-206ae-ld-a-power-generation-setup-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-206ae-ld-a-power-generation-setup-chromium/attachments/browser-logs-6db27ca250b3a1a4083663dd5a90aeedb0e1a354.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-abe0096aa1a1c45a3b34",
+              "file": "heat-game.spec.ts",
+              "line": 216,
+              "column": 3
+            },
+            {
+              "title": "should show heat buildup with clustered fuel rods",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1604,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-31T22:14:42.587Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-1ce31-up-with-clustered-fuel-rods-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-1ce31-up-with-clustered-fuel-rods-chromium/attachments/browser-logs-4108f70a5376472a80710ba1c287f526e1cfc9b4.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-ac87d21624a439db98b8",
+              "file": "heat-game.spec.ts",
+              "line": 253,
+              "column": 3
+            },
+            {
+              "title": "should not allow building without sufficient money",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1419,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-31T22:14:44.205Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-ee0f6-ng-without-sufficient-money-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-ee0f6-ng-without-sufficient-money-chromium/attachments/browser-logs-67852c21b9cbe344288f7cfb81aa3e88ded21441.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-b096005e15a85f67c2a8",
+              "file": "heat-game.spec.ts",
+              "line": 291,
+              "column": 3
+            },
+            {
+              "title": "should handle rapid clicking on the grid",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1239,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-31T22:14:45.637Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-c664c--rapid-clicking-on-the-grid-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-c664c--rapid-clicking-on-the-grid-chromium/attachments/browser-logs-8830c25d0c901f07d14f24299509ec6ff3fc0a0b.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-1b3f7a34798ed668be9c",
+              "file": "heat-game.spec.ts",
+              "line": 333,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-01-31T22:14:29.652Z",
+    "duration": 17301.476,
+    "expected": 8,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}
