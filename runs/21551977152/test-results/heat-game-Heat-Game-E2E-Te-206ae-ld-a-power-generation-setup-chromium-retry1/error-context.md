@@ -1,0 +1,153 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e2]:
+  - banner [ref=e3]:
+    - heading "Heat Management" [level=1] [ref=e4]
+    - generic [ref=e5]: Registered
+  - main [ref=e6]:
+    - generic [ref=e8]:
+      - generic [ref=e9]: "Money: €500"
+      - generic [ref=e10]:
+        - generic [ref=e11]: "Total Power: 0.0"
+        - generic [ref=e12]: "Total Earned: €0"
+        - generic [ref=e13]: "Meltdowns: 0"
+        - generic [ref=e14]: "Ticks: 5"
+        - generic [ref=e15]: "Clicks: 0"
+        - generic [ref=e16]:
+          - generic [ref=e17]: Heat Balance
+          - generic [ref=e18]: "Generated: +0.0"
+          - generic [ref=e19]: "Ventilated: -0.0"
+          - generic [ref=e20]: "To Power: -0.0"
+          - generic [ref=e21]: "To Env: -0.0"
+          - generic [ref=e22]: "Net Change: +0.0"
+          - generic [ref=e23]: "Power Sold: 0.00"
+      - generic [ref=e24]:
+        - generic [ref=e25]: Build Structures
+        - generic [ref=e26]:
+          - button "−" [ref=e27] [cursor=pointer]
+          - button "F Fuel Rod T1 €10" [ref=e28] [cursor=pointer]:
+            - generic [ref=e29]: F
+            - generic [ref=e30]: Fuel Rod
+            - generic [ref=e31]: T1
+            - generic [ref=e32]: €10
+          - button "+" [ref=e33] [cursor=pointer]
+        - generic [ref=e34]:
+          - button "−" [ref=e35] [cursor=pointer]
+          - button "V Ventilator T1 €10" [ref=e36] [cursor=pointer]:
+            - generic [ref=e37]: V
+            - generic [ref=e38]: Ventilator
+            - generic [ref=e39]: T1
+            - generic [ref=e40]: €10
+          - button "+" [ref=e41] [cursor=pointer]
+        - generic [ref=e42]:
+          - button "−" [ref=e43] [cursor=pointer]
+          - button "X Heat Exchanger T1 €15" [ref=e44] [cursor=pointer]:
+            - generic [ref=e45]: X
+            - generic [ref=e46]: Heat Exchanger
+            - generic [ref=e47]: T1
+            - generic [ref=e48]: €15
+          - button "+" [ref=e49] [cursor=pointer]
+        - generic [ref=e50]:
+          - button "−" [ref=e51] [cursor=pointer]
+          - button "I Insulator T1 €8" [ref=e52] [cursor=pointer]:
+            - generic [ref=e53]: I
+            - generic [ref=e54]: Insulator
+            - generic [ref=e55]: T1
+            - generic [ref=e56]: €8
+          - button "+" [ref=e57] [cursor=pointer]
+        - generic [ref=e58]:
+          - button "−" [ref=e59] [cursor=pointer]
+          - button "T Turbine T1 €25" [ref=e60] [cursor=pointer]:
+            - generic [ref=e61]: T
+            - generic [ref=e62]: Turbine
+            - generic [ref=e63]: T1
+            - generic [ref=e64]: €25
+          - button "+" [ref=e65] [cursor=pointer]
+        - generic [ref=e66]:
+          - button "−" [ref=e67] [cursor=pointer]
+          - button "S Substation T1 €50" [ref=e68] [cursor=pointer]:
+            - generic [ref=e69]: S
+            - generic [ref=e70]: Substation
+            - generic [ref=e71]: T1
+            - generic [ref=e72]: €50
+          - button "+" [ref=e73] [cursor=pointer]
+      - generic [ref=e74]:
+        - generic [ref=e75]: Upgrades
+        - generic [ref=e76]:
+          - generic [ref=e77]:
+            - generic [ref=e78]:
+              - generic [ref=e79]: Fuel Longevity
+              - generic [ref=e80]: Lv.0
+            - button "€100" [ref=e81] [cursor=pointer]
+          - generic [ref=e82]:
+            - generic [ref=e83]:
+              - generic [ref=e84]: Enriched Fuel
+              - generic [ref=e85]: Lv.0
+            - button "€150" [ref=e86] [cursor=pointer]
+          - generic [ref=e87]:
+            - generic [ref=e88]:
+              - generic [ref=e89]: Turbine Efficiency
+              - generic [ref=e90]: Lv.0/10
+            - button "€200" [ref=e91] [cursor=pointer]
+          - generic [ref=e92]:
+            - generic [ref=e93]:
+              - generic [ref=e94]: Advanced Insulation
+              - generic [ref=e95]: Lv.0/10
+            - button "€150" [ref=e96] [cursor=pointer]
+          - generic [ref=e97]:
+            - generic [ref=e98]:
+              - generic [ref=e99]: Power Grid Upgrade
+              - generic [ref=e100]: Lv.0
+            - button "€500" [ref=e101] [cursor=pointer]
+          - generic [ref=e102]:
+            - generic [ref=e103]:
+              - generic [ref=e104]: Improved Cooling
+              - generic [ref=e105]: Lv.0
+            - button "€100" [ref=e106] [cursor=pointer]
+          - generic [ref=e107]:
+            - generic [ref=e108]:
+              - generic [ref=e109]: Overclock
+              - generic [ref=e110]: Lv.0/5
+            - button "€1000" [disabled] [ref=e111]
+          - generic [ref=e112]:
+            - generic [ref=e113]:
+              - generic [ref=e114]: Bigger Buttons
+              - generic [ref=e115]: Lv.0
+            - button "€50" [ref=e116] [cursor=pointer]
+          - generic [ref=e117]:
+            - generic [ref=e118]:
+              - generic [ref=e119]: Reinforced Fuel Casing
+              - generic [ref=e120]: Lv.0/10
+            - button "€500" [ref=e121] [cursor=pointer]
+          - generic [ref=e122]:
+            - generic [ref=e123]:
+              - generic [ref=e124]: Heat-Resistant Fans
+              - generic [ref=e125]: Lv.0/10
+            - button "€100" [ref=e126] [cursor=pointer]
+          - generic [ref=e127]:
+            - generic [ref=e128]:
+              - generic [ref=e129]: Hardened Exchangers
+              - generic [ref=e130]: Lv.0/10
+            - button "€150" [ref=e131] [cursor=pointer]
+          - generic [ref=e132]:
+            - generic [ref=e133]:
+              - generic [ref=e134]: Advanced Ceramics
+              - generic [ref=e135]: Lv.0/10
+            - button "€120" [ref=e136] [cursor=pointer]
+          - generic [ref=e137]:
+            - generic [ref=e138]:
+              - generic [ref=e139]: Reinforced Turbines
+              - generic [ref=e140]: Lv.0/10
+            - button "€200" [ref=e141] [cursor=pointer]
+          - generic [ref=e142]:
+            - generic [ref=e143]:
+              - generic [ref=e144]: Industrial Substations
+              - generic [ref=e145]: Lv.0/10
+            - button "€300" [ref=e146] [cursor=pointer]
+      - generic [ref=e147]:
+        - generic [ref=e148]: Secret Upgrades
+        - generic [ref=e150]: No secrets discovered yet...
+  - contentinfo [ref=e151]:
+    - paragraph [ref=e152]: "Left-click: Build | Right-click: Demolish"
+```

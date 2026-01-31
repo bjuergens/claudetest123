@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="description" content="A heat management idle game PWA">
+    <meta name="theme-color" content="#1a1a1a">
+
+    <!-- PWA Meta Tags -->
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" type="image/svg+xml" href="icons/icon-192.svg">
+    <link rel="apple-touch-icon" href="icons/icon-192.svg">
+
+    <title>Heat Management Game</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="app-container">
+        <header class="app-header">
+            <h1>Heat Management</h1>
+            <div class="header-status">
+                <span id="pwa-status">Loading...</span>
+            </div>
+        </header>
+
+        <main class="game-container">
+            <canvas id="game-canvas"></canvas>
+            <div id="game-ui" class="game-ui"></div>
+        </main>
+
+        <footer class="app-footer">
+            <p>Left-click: Build | Right-click: Demolish</p>
+        </footer>
+    </div>
+
+    <button id="install-button" class="action-button install-button" style="display: none;">
+        Install App
+    </button>
+
+    <button id="update-button" class="action-button update-button" style="display: none;">
+        Update Available - Click to Refresh
+    </button>
+
+    <script type="module" src="app.js"></script>
+</body>
+</html>
