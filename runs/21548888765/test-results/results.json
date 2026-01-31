@@ -1,0 +1,512 @@
+{
+  "config": {
+    "configFile": "/home/runner/work/claudetest123/claudetest123/playwright.config.ts",
+    "rootDir": "/home/runner/work/claudetest123/claudetest123/e2e",
+    "forbidOnly": true,
+    "fullyParallel": true,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "ci": {
+        "commitHref": "https://github.com/bjuergens/claudetest123/commit/58730cffc3e9fb8f4d5343a62bccd4e16be87459",
+        "commitHash": "58730cffc3e9fb8f4d5343a62bccd4e16be87459",
+        "prHref": "https://github.com/bjuergens/claudetest123/pull/13",
+        "prTitle": "Add detailed cell performance visualization and heat balance display",
+        "prBaseHash": "cbc1802b63de329f5cad5a99a6d8eb9fefed80d0",
+        "buildHref": "https://github.com/bjuergens/claudetest123/actions/runs/21548888765"
+      },
+      "gitCommit": {
+        "shortHash": "58730cf",
+        "hash": "58730cffc3e9fb8f4d5343a62bccd4e16be87459",
+        "subject": "Merge bec64acb0f359300f60895d3958d1d97e960fdd0 into cbc1802b63de329f5cad5a99a6d8eb9fefed80d0",
+        "body": "Merge bec64acb0f359300f60895d3958d1d97e960fdd0 into cbc1802b63de329f5cad5a99a6d8eb9fefed80d0\n",
+        "author": {
+          "name": "Björn Jürgens",
+          "email": "4362465+bjuergens@users.noreply.github.com",
+          "time": 1769883903000
+        },
+        "committer": {
+          "name": "GitHub",
+          "email": "noreply@github.com",
+          "time": 1769883903000
+        },
+        "branch": "HEAD"
+      },
+      "gitDiff": "diff --git a/src/game/HeatGame.ts b/src/game/HeatGame.ts\nindex 37b538d..3b596db 100644\n--- a/src/game/HeatGame.ts\n+++ b/src/game/HeatGame.ts\n@@ -21,13 +21,14 @@ import {\n } from './BalanceConfig.js';\n \n import { GridManager, Cell } from './GridManager.js';\n-import { PhysicsEngine, PhysicsEvent, TickHeatBalance } from './PhysicsEngine.js';\n+import { PhysicsEngine, PhysicsEvent, TickHeatBalance, CellPerformance } from './PhysicsEngine.js';\n import { UpgradeManager, UpgradeEvent } from './UpgradeManager.js';\n \n // Re-export types for backward compatibility\n export { StructureType, Tier, UpgradeType, SecretUpgradeType };\n export { Cell };\n export { TickHeatBalance };\n+export { CellPerformance };\n \n export interface UpgradeState {\n   levels: Record<UpgradeType, number>;\n@@ -271,6 +272,30 @@ export class HeatGame {\n     return this.lastTickHeatBalance ? { ...this.lastTickHeatBalance } : null;\n   }\n \n+  /**\n+   * Get cell performance data for a specific cell\n+   * Returns null if no tick has been executed yet or cell is invalid\n+   */\n+  getCellPerformance(x: number, y: number): CellPerformance | null {\n+    return this.physicsEngine.getCellPerformance(x, y);\n+  }\n+\n+  /**\n+   * Get the effective melt temperature for a structure type (with upgrades)\n+   */\n+  getEffectiveMeltTemp(structure: StructureType): number {\n+    return this.physicsEngine.getEffectiveMeltTemp(structure);\n+  }\n+\n+  /**\n+   * Get effective power sale rate for a cell (with upgrades)\n+   */\n+  getEffectivePowerSaleRate(x: number, y: number): number {\n+    const cell = this.gridManager.getCellRef(x, y);\n+    if (!cell) return 0;\n+    return this.physicsEngine.getEffectivePowerSaleRate(cell);\n+  }\n+\n   // ==========================================================================\n   // MANUAL POWER GENERATION (Clicker)\n   // ==========================================================================\ndiff --git a/src/game/HeatGameRenderer.ts b/src/game/HeatGameRenderer.ts\nindex 29c1b9f..e8db34c 100644\n--- a/src/game/HeatGameRenderer.ts\n+++ b/src/game/HeatGameRenderer.ts\n@@ -9,9 +9,74 @@ import {\n   Tier,\n   GRID_SIZE,\n   GameEvent,\n+  CellPerformance,\n+  TickHeatBalance,\n } from './HeatGame.js';\n import { STRUCTURE_BASE_STATS, getStructureCost } from './BalanceConfig.js';\n \n+/**\n+ * HSV to RGB conversion\n+ * h: 0-360, s: 0-1, v: 0-1\n+ * Returns rgb string like 'rgb(r, g, b)'\n+ */\n+function hsvToRgb(h: number, s: number, v: number): string {\n+  h = h % 360;\n+  const c = v * s;\n+  const x = c * (1 - Math.abs((h / 60) % 2 - 1));\n+  const m = v - c;\n+  let r = 0, g = 0, b = 0;\n+\n+  if (h < 60) { r = c; g = x; b = 0; }\n+  else if (h < 120) { r = x; g = c; b = 0; }\n+  else if (h < 180) { r = 0; g = c; b = x; }\n+  else if (h < 240) { r = 0; g = x; b = c; }\n+  else if (h < 300) { r = x; g = 0; b = c; }\n+  else { r = c; g = 0; b = x; }\n+\n+  return `rgb(${Math.round((r + m) * 255)}, ${Math.round((g + m) * 255)}, ${Math.round((b + m) * 255)})`;\n+}\n+\n+/**\n+ * Structure type to hue mapping\n+ * Each structure type gets a distinct hue\n+ */\n+const STRUCTURE_HUES: Record<StructureType, number> = {\n+  [StructureType.Empty]: 0,       // N/A\n+  [StructureType.FuelRod]: 25,    // Orange\n+  [StructureType.Ventilator]: 200, // Cyan\n+  [StructureType.HeatExchanger]: 40, // Gold\n+  [StructureType.Insulator]: 0,   // Gray (low saturation)\n+  [StructureType.Turbine]: 280,   // Purple\n+  [StructureType.Substation]: 60, // Yellow\n+  [StructureType.VoidCell]: 230,  // Dark blue\n+};\n+\n+/**\n+ * Get HSV-based color for a structure based on type and tier\n+ */\n+function getStructureHsvColor(structure: StructureType, tier: Tier): string {\n+  if (structure === StructureType.Empty) {\n+    return '#2a2a2a';\n+  }\n+\n+  const hue = STRUCTURE_HUES[structure];\n+  // Saturation increases with tier: T1=0.5, T2=0.6, T3=0.7, T4=0.8\n+  const saturation = structure === StructureType.Insulator ? 0.1 : 0.5 + (tier - 1) * 0.1;\n+  // Value is constant at 0.7 for good visibility\n+  const value = 0.7;\n+\n+  return hsvToRgb(hue, saturation, value);\n+}\n+\n+/**\n+ * Sigmoid-like function for heat exchange visualization\n+ * Uses tanh to map values to -1 to 1 range with good sensitivity near 0\n+ * Scale factor determines sensitivity (higher = more sensitive to small values)\n+ */\n+function heatExchangeSigmoid(value: number, scale: number = 0.05): number {\n+  return Math.tanh(value * scale);\n+}\n+\n export interface RenderConfig {\n   cellSize: number;\n   gridPadding: number;\n@@ -241,6 +306,11 @@ export class HeatGameRenderer {\n     const grid = this.game.getGridSnapshot();\n     const gridSize = this.game.getGridSize();\n \n+    // Bar dimensions\n+    const barWidth = Math.max(3, cellSize * 0.12);  // Right temperature bar width\n+    const barHeight = Math.max(2, cellSize * 0.08); // Top/bottom bar height\n+    const barPadding = 2;\n+\n     for (let y = 0; y < gridSize; y++) {\n       for (let x = 0; x < gridSize; x++) {\n         const cell = grid[y][x];\n@@ -249,27 +319,39 @@ export class HeatGameRenderer {\n         const drawX = gridPadding + x * cellSize;\n         const drawY = gridPadding + y * cellSize;\n \n-        // Draw structure background\n-        this.ctx.fillStyle = STRUCTURE_COLORS[cell.structure];\n+        // Draw structure background with HSV color based on type and tier\n+        this.ctx.fillStyle = getStructureHsvColor(cell.structure, cell.tier);\n         this.ctx.fillRect(drawX + 2, drawY + 2, cellSize - 4, cellSize - 4);\n \n+        // Get cell performance data\n+        const perf = this.game.getCellPerformance(x, y);\n+\n+        // Draw top bar (lifetime for fuel, performance for turbine/substation)\n+        this.renderTopBar(cell, perf, drawX, drawY, cellSize, barHeight, barPadding);\n+\n+        // Draw right temperature bar (thermometer)\n+        this.renderTempBar(cell, drawX, drawY, cellSize, barWidth, barPadding);\n+\n+        // Draw bottom heat exchange bar\n+        this.renderHeatExchangeBar(perf, drawX, drawY, cellSize, barHeight, barPadding);\n+\n         // Draw tier indicator for T2+\n         if (cell.tier > Tier.T1) {\n           this.ctx.fillStyle = '#ffffff';\n-          this.ctx.font = `${cellSize * 0.25}px monospace`;\n-          this.ctx.textAlign = 'right';\n+          this.ctx.font = `${cellSize * 0.22}px monospace`;\n+          this.ctx.textAlign = 'left';\n           this.ctx.textBaseline = 'top';\n-          this.ctx.fillText(`T${cell.tier}`, drawX + cellSize - 4, drawY + 4);\n+          this.ctx.fillText(`T${cell.tier}`, drawX + 4, drawY + barHeight + barPadding + 2);\n         }\n \n-        // Draw structure symbol\n+        // Draw structure symbol (slightly offset up to make room for bottom bar)\n         this.ctx.fillStyle = '#ffffff';\n-        this.ctx.font = `bold ${cellSize * 0.5}px monospace`;\n+        this.ctx.font = `bold ${cellSize * 0.4}px monospace`;\n         this.ctx.textAlign = 'center';\n         this.ctx.textBaseline = 'middle';\n         this.ctx.fillText(\n           STRUCTURE_SYMBOLS[cell.structure],\n-          drawX + cellSize / 2,\n+          drawX + cellSize / 2 - barWidth / 2,\n           drawY + cellSize / 2\n         );\n \n@@ -278,12 +360,152 @@ export class HeatGameRenderer {\n           this.ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';\n           this.ctx.fillRect(drawX + 2, drawY + 2, cellSize - 4, cellSize - 4);\n           this.ctx.fillStyle = '#666666';\n+          this.ctx.font = `bold ${cellSize * 0.4}px monospace`;\n           this.ctx.fillText('⌛', drawX + cellSize / 2, drawY + cellSize / 2);\n         }\n       }\n     }\n   }\n \n+  /**\n+   * Render top bar showing lifetime (fuel) or performance (turbine/substation)\n+   */\n+  private renderTopBar(\n+    cell: Cell,\n+    perf: CellPerformance | null,\n+    drawX: number,\n+    drawY: number,\n+    cellSize: number,\n+    barHeight: number,\n+    barPadding: number\n+  ): void {\n+    const barX = drawX + barPadding + 2;\n+    const barY = drawY + barPadding + 2;\n+    const barWidth = cellSize - barPadding * 2 - 4;\n+\n+    // Background\n+    this.ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';\n+    this.ctx.fillRect(barX, barY, barWidth, barHeight);\n+\n+    let fillRatio = 0;\n+    let fillColor = '#00ff00';\n+\n+    if (cell.structure === StructureType.FuelRod && cell.lifetime > 0 && perf) {\n+      // Fuel rod: show lifetime remaining\n+      const maxLifetime = perf.initialLifetime > 0 ? perf.initialLifetime : 1;\n+      fillRatio = cell.lifetime / maxLifetime;\n+      // Color gradient from green (full) to red (depleted)\n+      fillColor = fillRatio > 0.5 ? '#00ff00' : fillRatio > 0.25 ? '#ffff00' : '#ff6600';\n+    } else if (cell.structure === StructureType.Turbine && perf) {\n+      // Turbine: show power generation performance\n+      const baseStats = STRUCTURE_BASE_STATS[StructureType.Turbine];\n+      const maxHeatConsumption = baseStats.maxHeatConsumption * Math.pow(10, cell.tier - 1);\n+      const maxPower = maxHeatConsumption * baseStats.powerGeneration;\n+      fillRatio = maxPower > 0 ? perf.powerGenerated / maxPower : 0;\n+      fillColor = '#aa00ff'; // Purple for turbine\n+    } else if (cell.structure === StructureType.Substation && perf) {\n+      // Substation: show power sold vs max sale rate\n+      const maxSaleRate = this.game.getEffectivePowerSaleRate(cell.x, cell.y);\n+      fillRatio = maxSaleRate > 0 ? perf.powerSold / maxSaleRate : 0;\n+      fillColor = '#ffff00'; // Yellow for substation\n+    }\n+\n+    // Fill bar\n+    if (fillRatio > 0) {\n+      this.ctx.fillStyle = fillColor;\n+      this.ctx.fillRect(barX, barY, barWidth * Math.min(fillRatio, 1), barHeight);\n+    }\n+  }\n+\n+  /**\n+   * Render right temperature bar (thermometer style)\n+   */\n+  private renderTempBar(\n+    cell: Cell,\n+    drawX: number,\n+    drawY: number,\n+    cellSize: number,\n+    barWidth: number,\n+    barPadding: number\n+  ): void {\n+    const barX = drawX + cellSize - barPadding - barWidth - 2;\n+    const barY = drawY + barPadding + 2;\n+    const barHeight = cellSize - barPadding * 2 - 4;\n+\n+    // Background\n+    this.ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';\n+    this.ctx.fillRect(barX, barY, barWidth, barHeight);\n+\n+    // Get effective melt temperature\n+    const meltTemp = this.game.getEffectiveMeltTemp(cell.structure);\n+    const tempRatio = meltTemp === Infinity ? 0 : Math.min(cell.heat / meltTemp, 1);\n+\n+    if (tempRatio > 0) {\n+      // Temperature fills from bottom to top\n+      const fillHeight = barHeight * tempRatio;\n+      const fillY = barY + barHeight - fillHeight;\n+\n+      // Color gradient from blue (cold) to red (hot)\n+      let tempColor: string;\n+      if (tempRatio < 0.3) {\n+        tempColor = '#0088ff'; // Blue\n+      } else if (tempRatio < 0.5) {\n+        tempColor = '#00ff88'; // Cyan-green\n+      } else if (tempRatio < 0.7) {\n+        tempColor = '#ffff00'; // Yellow\n+      } else if (tempRatio < 0.9) {\n+        tempColor = '#ff8800'; // Orange\n+      } else {\n+        tempColor = '#ff0000'; // Red\n+      }\n+\n+      this.ctx.fillStyle = tempColor;\n+      this.ctx.fillRect(barX, fillY, barWidth, fillHeight);\n+    }\n+  }\n+\n+  /**\n+   * Render bottom heat exchange bar with tanh scaling\n+   */\n+  private renderHeatExchangeBar(\n+    perf: CellPerformance | null,\n+    drawX: number,\n+    drawY: number,\n+    cellSize: number,\n+    barHeight: number,\n+    barPadding: number\n+  ): void {\n+    const barX = drawX + barPadding + 2;\n+    const barY = drawY + cellSize - barPadding - barHeight - 2;\n+    const barWidth = cellSize - barPadding * 2 - 4;\n+\n+    // Background\n+    this.ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';\n+    this.ctx.fillRect(barX, barY, barWidth, barHeight);\n+\n+    if (!perf) return;\n+\n+    // Apply tanh scaling to heat exchange\n+    const scaledExchange = heatExchangeSigmoid(perf.heatExchange, 0.05);\n+    const centerX = barX + barWidth / 2;\n+\n+    if (scaledExchange > 0.01) {\n+      // Heat gained (positive) - draw from center to right in orange/red\n+      const fillWidth = (barWidth / 2) * scaledExchange;\n+      this.ctx.fillStyle = scaledExchange > 0.5 ? '#ff4400' : '#ff8800';\n+      this.ctx.fillRect(centerX, barY, fillWidth, barHeight);\n+    } else if (scaledExchange < -0.01) {\n+      // Heat lost (negative) - draw from center to left in blue\n+      const fillWidth = (barWidth / 2) * Math.abs(scaledExchange);\n+      this.ctx.fillStyle = scaledExchange < -0.5 ? '#0044ff' : '#0088ff';\n+      this.ctx.fillRect(centerX - fillWidth, barY, fillWidth, barHeight);\n+    }\n+\n+    // Draw center line marker\n+    this.ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';\n+    this.ctx.fillRect(centerX - 0.5, barY, 1, barHeight);\n+  }\n+\n   private renderHeatOverlay(): void {\n     const { cellSize, gridPadding } = this.config;\n     const grid = this.game.getGridSnapshot();\n@@ -392,12 +614,30 @@ export class HeatGameRenderer {\n \n     if (this.statsDisplay) {\n       const stats = this.game.getStats();\n+      const heatBalance = this.game.getLastTickHeatBalance();\n+\n+      let heatBalanceHtml = '';\n+      if (heatBalance) {\n+        heatBalanceHtml = `\n+          <div class=\"heat-balance-section\">\n+            <div class=\"heat-balance-title\">Heat Balance</div>\n+            <div>Generated: +${heatBalance.heatGenerated.toFixed(1)}</div>\n+            <div>Ventilated: -${heatBalance.heatVentilated.toFixed(1)}</div>\n+            <div>To Power: -${heatBalance.heatConvertedToPower.toFixed(1)}</div>\n+            <div>To Env: -${heatBalance.heatLostToEnvironment.toFixed(1)}</div>\n+            <div>Net Change: ${heatBalance.heatDeltaInGrid >= 0 ? '+' : ''}${heatBalance.heatDeltaInGrid.toFixed(1)}</div>\n+            <div>Power Sold: ${heatBalance.powerSold.toFixed(2)}</div>\n+          </div>\n+        `;\n+      }\n+\n       this.statsDisplay.innerHTML = `\n         <div>Total Power: ${this.game.getTotalPowerGenerated().toFixed(1)}</div>\n         <div>Total Earned: €${this.game.getTotalMoneyEarned().toFixed(0)}</div>\n         <div>Meltdowns: ${stats.meltdownCount}</div>\n         <div>Ticks: ${stats.tickCount}</div>\n         <div>Clicks: ${stats.manualClicks}</div>\n+        ${heatBalanceHtml}\n       `;\n     }\n   }\ndiff --git a/src/game/PhysicsEngine.ts b/src/game/PhysicsEngine.ts\nindex 4aad122..8c088bb 100644\n--- a/src/game/PhysicsEngine.ts\n+++ b/src/game/PhysicsEngine.ts\n@@ -46,6 +46,20 @@ export interface PhysicsStats {\n   fuelRodsDepletedIce: number;\n }\n \n+/**\n+ * Per-cell performance data for UI display\n+ */\n+export interface CellPerformance {\n+  /** Net heat exchange with neighbors (positive = gained heat, negative = lost heat) */\n+  heatExchange: number;\n+  /** For turbines: power generated this tick */\n+  powerGenerated: number;\n+  /** For substations: power sold this tick */\n+  powerSold: number;\n+  /** For fuel rods: initial lifetime when placed */\n+  initialLifetime: number;\n+}\n+\n /**\n  * Per-tick heat balance statistics for debugging/display\n  * Conservation law: heatGenerated = heatVentilated + heatConvertedToPower + heatLostToEnvironment + heatDeltaInGrid\n@@ -85,6 +99,8 @@ export class PhysicsEngine {\n     fuelRodsDepletedCool: 0,\n     fuelRodsDepletedIce: 0,\n   };\n+  /** Per-cell performance data, updated each tick */\n+  private cellPerformance: Map<string, CellPerformance> = new Map();\n \n   constructor(\n     private gridManager: GridManager,\n@@ -92,6 +108,64 @@ export class PhysicsEngine {\n     private isSecretPurchased: (type: SecretUpgradeType) => boolean = () => false\n   ) {}\n \n+  /**\n+   * Get cell performance key\n+   */\n+  private getCellKey(x: number, y: number): string {\n+    return `${x},${y}`;\n+  }\n+\n+  /**\n+   * Get performance data for a cell\n+   */\n+  getCellPerformance(x: number, y: number): CellPerformance | null {\n+    return this.cellPerformance.get(this.getCellKey(x, y)) ?? null;\n+  }\n+\n+  /**\n+   * Initialize cell performance data for all cells\n+   */\n+  private initCellPerformance(): void {\n+    this.cellPerformance.clear();\n+    const gridSize = this.gridManager.getSize();\n+    for (let y = 0; y < gridSize; y++) {\n+      for (let x = 0; x < gridSize; x++) {\n+        this.cellPerformance.set(this.getCellKey(x, y), {\n+          heatExchange: 0,\n+          powerGenerated: 0,\n+          powerSold: 0,\n+          initialLifetime: 0,\n+        });\n+      }\n+    }\n+  }\n+\n+  /**\n+   * Track initial fuel lifetime for fuel rods (for UI progress bars)\n+   */\n+  private trackInitialFuelLifetime(): void {\n+    const grid = this.gridManager.getGridRef();\n+    const gridSize = this.gridManager.getSize();\n+\n+    for (let y = 0; y < gridSize; y++) {\n+      for (let x = 0; x < gridSize; x++) {\n+        const cell = grid[y][x];\n+        if (cell.structure === StructureType.FuelRod && cell.lifetime > 0) {\n+          const perf = this.cellPerformance.get(this.getCellKey(x, y));\n+          if (perf) {\n+            // Calculate initial lifetime based on tier and upgrades\n+            // This is used for showing the lifetime progress bar\n+            const upgradeLevel = this.getUpgradeLevel(UpgradeType.FuelLifetime);\n+            const baseLifetime = STRUCTURE_BASE_STATS[StructureType.FuelRod].baseLifetime;\n+            const tierLifetime = baseLifetime * Math.pow(10, cell.tier - 1);\n+            const upgradeBonus = upgradeLevel * UPGRADE_DEFINITIONS[UpgradeType.FuelLifetime].improvementPerLevel;\n+            perf.initialLifetime = tierLifetime + upgradeBonus;\n+          }\n+        }\n+      }\n+    }\n+  }\n+\n   /**\n    * Add an event listener for physics events\n    */\n@@ -356,10 +430,15 @@ export class PhysicsEngine {\n       }\n     }\n \n-    // Apply deltas\n+    // Apply deltas and track per-cell heat exchange\n     for (let y = 0; y < gridSize; y++) {\n       for (let x = 0; x < gridSize; x++) {\n         grid[y][x].heat = Math.max(0, grid[y][x].heat + heatDeltas[y][x]);\n+        // Update cell performance with heat exchange\n+        const perf = this.cellPerformance.get(this.getCellKey(x, y));\n+        if (perf) {\n+          perf.heatExchange = heatDeltas[y][x];\n+        }\n       }\n     }\n \n@@ -417,6 +496,12 @@ export class PhysicsEngine {\n         cell.power += powerGenerated;\n         this.stats.totalPowerGenerated += powerGenerated;\n         totalHeatConvertedToPower += heatConsumed;\n+\n+        // Track per-turbine power generated\n+        const perf = this.cellPerformance.get(this.getCellKey(x, y));\n+        if (perf) {\n+          perf.powerGenerated = powerGenerated;\n+        }\n       }\n     }\n \n@@ -460,6 +545,12 @@ export class PhysicsEngine {\n           this.stats.totalMoneyEarned += earnings;\n           cell.power -= powerToSell;\n \n+          // Track per-substation power sold\n+          const perf = this.cellPerformance.get(this.getCellKey(x, y));\n+          if (perf) {\n+            perf.powerSold = powerToSell;\n+          }\n+\n           if (earnings > 0) {\n             this.emitEvent({\n               type: 'power_sold',\n@@ -570,6 +661,12 @@ export class PhysicsEngine {\n    * Returns the money earned, meltdown status, and heat balance statistics\n    */\n   tick(): { moneyEarned: number; meltdown: boolean; heatBalance: TickHeatBalance } {\n+    // Initialize per-cell performance tracking\n+    this.initCellPerformance();\n+\n+    // Track initial fuel lifetime before processing\n+    this.trackInitialFuelLifetime();\n+\n     // Capture initial heat state\n     const heatBefore = this.getTotalGridHeat();",
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "/home/runner/work/claudetest123/claudetest123/test-results",
+        "repeatEach": 1,
+        "retries": 2,
+        "metadata": {
+          "ci": {
+            "commitHref": "https://github.com/bjuergens/claudetest123/commit/58730cffc3e9fb8f4d5343a62bccd4e16be87459",
+            "commitHash": "58730cffc3e9fb8f4d5343a62bccd4e16be87459",
+            "prHref": "https://github.com/bjuergens/claudetest123/pull/13",
+            "prTitle": "Add detailed cell performance visualization and heat balance display",
+            "prBaseHash": "cbc1802b63de329f5cad5a99a6d8eb9fefed80d0",
+            "buildHref": "https://github.com/bjuergens/claudetest123/actions/runs/21548888765"
+          },
+          "gitCommit": {
+            "shortHash": "58730cf",
+            "hash": "58730cffc3e9fb8f4d5343a62bccd4e16be87459",
+            "subject": "Merge bec64acb0f359300f60895d3958d1d97e960fdd0 into cbc1802b63de329f5cad5a99a6d8eb9fefed80d0",
+            "body": "Merge bec64acb0f359300f60895d3958d1d97e960fdd0 into cbc1802b63de329f5cad5a99a6d8eb9fefed80d0\n",
+            "author": {
+              "name": "Björn Jürgens",
+              "email": "4362465+bjuergens@users.noreply.github.com",
+              "time": 1769883903000
+            },
+            "committer": {
+              "name": "GitHub",
+              "email": "noreply@github.com",
+              "time": 1769883903000
+            },
+            "branch": "HEAD"
+          },
+          "gitDiff": "diff --git a/src/game/HeatGame.ts b/src/game/HeatGame.ts\nindex 37b538d..3b596db 100644\n--- a/src/game/HeatGame.ts\n+++ b/src/game/HeatGame.ts\n@@ -21,13 +21,14 @@ import {\n } from './BalanceConfig.js';\n \n import { GridManager, Cell } from './GridManager.js';\n-import { PhysicsEngine, PhysicsEvent, TickHeatBalance } from './PhysicsEngine.js';\n+import { PhysicsEngine, PhysicsEvent, TickHeatBalance, CellPerformance } from './PhysicsEngine.js';\n import { UpgradeManager, UpgradeEvent } from './UpgradeManager.js';\n \n // Re-export types for backward compatibility\n export { StructureType, Tier, UpgradeType, SecretUpgradeType };\n export { Cell };\n export { TickHeatBalance };\n+export { CellPerformance };\n \n export interface UpgradeState {\n   levels: Record<UpgradeType, number>;\n@@ -271,6 +272,30 @@ export class HeatGame {\n     return this.lastTickHeatBalance ? { ...this.lastTickHeatBalance } : null;\n   }\n \n+  /**\n+   * Get cell performance data for a specific cell\n+   * Returns null if no tick has been executed yet or cell is invalid\n+   */\n+  getCellPerformance(x: number, y: number): CellPerformance | null {\n+    return this.physicsEngine.getCellPerformance(x, y);\n+  }\n+\n+  /**\n+   * Get the effective melt temperature for a structure type (with upgrades)\n+   */\n+  getEffectiveMeltTemp(structure: StructureType): number {\n+    return this.physicsEngine.getEffectiveMeltTemp(structure);\n+  }\n+\n+  /**\n+   * Get effective power sale rate for a cell (with upgrades)\n+   */\n+  getEffectivePowerSaleRate(x: number, y: number): number {\n+    const cell = this.gridManager.getCellRef(x, y);\n+    if (!cell) return 0;\n+    return this.physicsEngine.getEffectivePowerSaleRate(cell);\n+  }\n+\n   // ==========================================================================\n   // MANUAL POWER GENERATION (Clicker)\n   // ==========================================================================\ndiff --git a/src/game/HeatGameRenderer.ts b/src/game/HeatGameRenderer.ts\nindex 29c1b9f..e8db34c 100644\n--- a/src/game/HeatGameRenderer.ts\n+++ b/src/game/HeatGameRenderer.ts\n@@ -9,9 +9,74 @@ import {\n   Tier,\n   GRID_SIZE,\n   GameEvent,\n+  CellPerformance,\n+  TickHeatBalance,\n } from './HeatGame.js';\n import { STRUCTURE_BASE_STATS, getStructureCost } from './BalanceConfig.js';\n \n+/**\n+ * HSV to RGB conversion\n+ * h: 0-360, s: 0-1, v: 0-1\n+ * Returns rgb string like 'rgb(r, g, b)'\n+ */\n+function hsvToRgb(h: number, s: number, v: number): string {\n+  h = h % 360;\n+  const c = v * s;\n+  const x = c * (1 - Math.abs((h / 60) % 2 - 1));\n+  const m = v - c;\n+  let r = 0, g = 0, b = 0;\n+\n+  if (h < 60) { r = c; g = x; b = 0; }\n+  else if (h < 120) { r = x; g = c; b = 0; }\n+  else if (h < 180) { r = 0; g = c; b = x; }\n+  else if (h < 240) { r = 0; g = x; b = c; }\n+  else if (h < 300) { r = x; g = 0; b = c; }\n+  else { r = c; g = 0; b = x; }\n+\n+  return `rgb(${Math.round((r + m) * 255)}, ${Math.round((g + m) * 255)}, ${Math.round((b + m) * 255)})`;\n+}\n+\n+/**\n+ * Structure type to hue mapping\n+ * Each structure type gets a distinct hue\n+ */\n+const STRUCTURE_HUES: Record<StructureType, number> = {\n+  [StructureType.Empty]: 0,       // N/A\n+  [StructureType.FuelRod]: 25,    // Orange\n+  [StructureType.Ventilator]: 200, // Cyan\n+  [StructureType.HeatExchanger]: 40, // Gold\n+  [StructureType.Insulator]: 0,   // Gray (low saturation)\n+  [StructureType.Turbine]: 280,   // Purple\n+  [StructureType.Substation]: 60, // Yellow\n+  [StructureType.VoidCell]: 230,  // Dark blue\n+};\n+\n+/**\n+ * Get HSV-based color for a structure based on type and tier\n+ */\n+function getStructureHsvColor(structure: StructureType, tier: Tier): string {\n+  if (structure === StructureType.Empty) {\n+    return '#2a2a2a';\n+  }\n+\n+  const hue = STRUCTURE_HUES[structure];\n+  // Saturation increases with tier: T1=0.5, T2=0.6, T3=0.7, T4=0.8\n+  const saturation = structure === StructureType.Insulator ? 0.1 : 0.5 + (tier - 1) * 0.1;\n+  // Value is constant at 0.7 for good visibility\n+  const value = 0.7;\n+\n+  return hsvToRgb(hue, saturation, value);\n+}\n+\n+/**\n+ * Sigmoid-like function for heat exchange visualization\n+ * Uses tanh to map values to -1 to 1 range with good sensitivity near 0\n+ * Scale factor determines sensitivity (higher = more sensitive to small values)\n+ */\n+function heatExchangeSigmoid(value: number, scale: number = 0.05): number {\n+  return Math.tanh(value * scale);\n+}\n+\n export interface RenderConfig {\n   cellSize: number;\n   gridPadding: number;\n@@ -241,6 +306,11 @@ export class HeatGameRenderer {\n     const grid = this.game.getGridSnapshot();\n     const gridSize = this.game.getGridSize();\n \n+    // Bar dimensions\n+    const barWidth = Math.max(3, cellSize * 0.12);  // Right temperature bar width\n+    const barHeight = Math.max(2, cellSize * 0.08); // Top/bottom bar height\n+    const barPadding = 2;\n+\n     for (let y = 0; y < gridSize; y++) {\n       for (let x = 0; x < gridSize; x++) {\n         const cell = grid[y][x];\n@@ -249,27 +319,39 @@ export class HeatGameRenderer {\n         const drawX = gridPadding + x * cellSize;\n         const drawY = gridPadding + y * cellSize;\n \n-        // Draw structure background\n-        this.ctx.fillStyle = STRUCTURE_COLORS[cell.structure];\n+        // Draw structure background with HSV color based on type and tier\n+        this.ctx.fillStyle = getStructureHsvColor(cell.structure, cell.tier);\n         this.ctx.fillRect(drawX + 2, drawY + 2, cellSize - 4, cellSize - 4);\n \n+        // Get cell performance data\n+        const perf = this.game.getCellPerformance(x, y);\n+\n+        // Draw top bar (lifetime for fuel, performance for turbine/substation)\n+        this.renderTopBar(cell, perf, drawX, drawY, cellSize, barHeight, barPadding);\n+\n+        // Draw right temperature bar (thermometer)\n+        this.renderTempBar(cell, drawX, drawY, cellSize, barWidth, barPadding);\n+\n+        // Draw bottom heat exchange bar\n+        this.renderHeatExchangeBar(perf, drawX, drawY, cellSize, barHeight, barPadding);\n+\n         // Draw tier indicator for T2+\n         if (cell.tier > Tier.T1) {\n           this.ctx.fillStyle = '#ffffff';\n-          this.ctx.font = `${cellSize * 0.25}px monospace`;\n-          this.ctx.textAlign = 'right';\n+          this.ctx.font = `${cellSize * 0.22}px monospace`;\n+          this.ctx.textAlign = 'left';\n           this.ctx.textBaseline = 'top';\n-          this.ctx.fillText(`T${cell.tier}`, drawX + cellSize - 4, drawY + 4);\n+          this.ctx.fillText(`T${cell.tier}`, drawX + 4, drawY + barHeight + barPadding + 2);\n         }\n \n-        // Draw structure symbol\n+        // Draw structure symbol (slightly offset up to make room for bottom bar)\n         this.ctx.fillStyle = '#ffffff';\n-        this.ctx.font = `bold ${cellSize * 0.5}px monospace`;\n+        this.ctx.font = `bold ${cellSize * 0.4}px monospace`;\n         this.ctx.textAlign = 'center';\n         this.ctx.textBaseline = 'middle';\n         this.ctx.fillText(\n           STRUCTURE_SYMBOLS[cell.structure],\n-          drawX + cellSize / 2,\n+          drawX + cellSize / 2 - barWidth / 2,\n           drawY + cellSize / 2\n         );\n \n@@ -278,12 +360,152 @@ export class HeatGameRenderer {\n           this.ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';\n           this.ctx.fillRect(drawX + 2, drawY + 2, cellSize - 4, cellSize - 4);\n           this.ctx.fillStyle = '#666666';\n+          this.ctx.font = `bold ${cellSize * 0.4}px monospace`;\n           this.ctx.fillText('⌛', drawX + cellSize / 2, drawY + cellSize / 2);\n         }\n       }\n     }\n   }\n \n+  /**\n+   * Render top bar showing lifetime (fuel) or performance (turbine/substation)\n+   */\n+  private renderTopBar(\n+    cell: Cell,\n+    perf: CellPerformance | null,\n+    drawX: number,\n+    drawY: number,\n+    cellSize: number,\n+    barHeight: number,\n+    barPadding: number\n+  ): void {\n+    const barX = drawX + barPadding + 2;\n+    const barY = drawY + barPadding + 2;\n+    const barWidth = cellSize - barPadding * 2 - 4;\n+\n+    // Background\n+    this.ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';\n+    this.ctx.fillRect(barX, barY, barWidth, barHeight);\n+\n+    let fillRatio = 0;\n+    let fillColor = '#00ff00';\n+\n+    if (cell.structure === StructureType.FuelRod && cell.lifetime > 0 && perf) {\n+      // Fuel rod: show lifetime remaining\n+      const maxLifetime = perf.initialLifetime > 0 ? perf.initialLifetime : 1;\n+      fillRatio = cell.lifetime / maxLifetime;\n+      // Color gradient from green (full) to red (depleted)\n+      fillColor = fillRatio > 0.5 ? '#00ff00' : fillRatio > 0.25 ? '#ffff00' : '#ff6600';\n+    } else if (cell.structure === StructureType.Turbine && perf) {\n+      // Turbine: show power generation performance\n+      const baseStats = STRUCTURE_BASE_STATS[StructureType.Turbine];\n+      const maxHeatConsumption = baseStats.maxHeatConsumption * Math.pow(10, cell.tier - 1);\n+      const maxPower = maxHeatConsumption * baseStats.powerGeneration;\n+      fillRatio = maxPower > 0 ? perf.powerGenerated / maxPower : 0;\n+      fillColor = '#aa00ff'; // Purple for turbine\n+    } else if (cell.structure === StructureType.Substation && perf) {\n+      // Substation: show power sold vs max sale rate\n+      const maxSaleRate = this.game.getEffectivePowerSaleRate(cell.x, cell.y);\n+      fillRatio = maxSaleRate > 0 ? perf.powerSold / maxSaleRate : 0;\n+      fillColor = '#ffff00'; // Yellow for substation\n+    }\n+\n+    // Fill bar\n+    if (fillRatio > 0) {\n+      this.ctx.fillStyle = fillColor;\n+      this.ctx.fillRect(barX, barY, barWidth * Math.min(fillRatio, 1), barHeight);\n+    }\n+  }\n+\n+  /**\n+   * Render right temperature bar (thermometer style)\n+   */\n+  private renderTempBar(\n+    cell: Cell,\n+    drawX: number,\n+    drawY: number,\n+    cellSize: number,\n+    barWidth: number,\n+    barPadding: number\n+  ): void {\n+    const barX = drawX + cellSize - barPadding - barWidth - 2;\n+    const barY = drawY + barPadding + 2;\n+    const barHeight = cellSize - barPadding * 2 - 4;\n+\n+    // Background\n+    this.ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';\n+    this.ctx.fillRect(barX, barY, barWidth, barHeight);\n+\n+    // Get effective melt temperature\n+    const meltTemp = this.game.getEffectiveMeltTemp(cell.structure);\n+    const tempRatio = meltTemp === Infinity ? 0 : Math.min(cell.heat / meltTemp, 1);\n+\n+    if (tempRatio > 0) {\n+      // Temperature fills from bottom to top\n+      const fillHeight = barHeight * tempRatio;\n+      const fillY = barY + barHeight - fillHeight;\n+\n+      // Color gradient from blue (cold) to red (hot)\n+      let tempColor: string;\n+      if (tempRatio < 0.3) {\n+        tempColor = '#0088ff'; // Blue\n+      } else if (tempRatio < 0.5) {\n+        tempColor = '#00ff88'; // Cyan-green\n+      } else if (tempRatio < 0.7) {\n+        tempColor = '#ffff00'; // Yellow\n+      } else if (tempRatio < 0.9) {\n+        tempColor = '#ff8800'; // Orange\n+      } else {\n+        tempColor = '#ff0000'; // Red\n+      }\n+\n+      this.ctx.fillStyle = tempColor;\n+      this.ctx.fillRect(barX, fillY, barWidth, fillHeight);\n+    }\n+  }\n+\n+  /**\n+   * Render bottom heat exchange bar with tanh scaling\n+   */\n+  private renderHeatExchangeBar(\n+    perf: CellPerformance | null,\n+    drawX: number,\n+    drawY: number,\n+    cellSize: number,\n+    barHeight: number,\n+    barPadding: number\n+  ): void {\n+    const barX = drawX + barPadding + 2;\n+    const barY = drawY + cellSize - barPadding - barHeight - 2;\n+    const barWidth = cellSize - barPadding * 2 - 4;\n+\n+    // Background\n+    this.ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';\n+    this.ctx.fillRect(barX, barY, barWidth, barHeight);\n+\n+    if (!perf) return;\n+\n+    // Apply tanh scaling to heat exchange\n+    const scaledExchange = heatExchangeSigmoid(perf.heatExchange, 0.05);\n+    const centerX = barX + barWidth / 2;\n+\n+    if (scaledExchange > 0.01) {\n+      // Heat gained (positive) - draw from center to right in orange/red\n+      const fillWidth = (barWidth / 2) * scaledExchange;\n+      this.ctx.fillStyle = scaledExchange > 0.5 ? '#ff4400' : '#ff8800';\n+      this.ctx.fillRect(centerX, barY, fillWidth, barHeight);\n+    } else if (scaledExchange < -0.01) {\n+      // Heat lost (negative) - draw from center to left in blue\n+      const fillWidth = (barWidth / 2) * Math.abs(scaledExchange);\n+      this.ctx.fillStyle = scaledExchange < -0.5 ? '#0044ff' : '#0088ff';\n+      this.ctx.fillRect(centerX - fillWidth, barY, fillWidth, barHeight);\n+    }\n+\n+    // Draw center line marker\n+    this.ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';\n+    this.ctx.fillRect(centerX - 0.5, barY, 1, barHeight);\n+  }\n+\n   private renderHeatOverlay(): void {\n     const { cellSize, gridPadding } = this.config;\n     const grid = this.game.getGridSnapshot();\n@@ -392,12 +614,30 @@ export class HeatGameRenderer {\n \n     if (this.statsDisplay) {\n       const stats = this.game.getStats();\n+      const heatBalance = this.game.getLastTickHeatBalance();\n+\n+      let heatBalanceHtml = '';\n+      if (heatBalance) {\n+        heatBalanceHtml = `\n+          <div class=\"heat-balance-section\">\n+            <div class=\"heat-balance-title\">Heat Balance</div>\n+            <div>Generated: +${heatBalance.heatGenerated.toFixed(1)}</div>\n+            <div>Ventilated: -${heatBalance.heatVentilated.toFixed(1)}</div>\n+            <div>To Power: -${heatBalance.heatConvertedToPower.toFixed(1)}</div>\n+            <div>To Env: -${heatBalance.heatLostToEnvironment.toFixed(1)}</div>\n+            <div>Net Change: ${heatBalance.heatDeltaInGrid >= 0 ? '+' : ''}${heatBalance.heatDeltaInGrid.toFixed(1)}</div>\n+            <div>Power Sold: ${heatBalance.powerSold.toFixed(2)}</div>\n+          </div>\n+        `;\n+      }\n+\n       this.statsDisplay.innerHTML = `\n         <div>Total Power: ${this.game.getTotalPowerGenerated().toFixed(1)}</div>\n         <div>Total Earned: €${this.game.getTotalMoneyEarned().toFixed(0)}</div>\n         <div>Meltdowns: ${stats.meltdownCount}</div>\n         <div>Ticks: ${stats.tickCount}</div>\n         <div>Clicks: ${stats.manualClicks}</div>\n+        ${heatBalanceHtml}\n       `;\n     }\n   }\ndiff --git a/src/game/PhysicsEngine.ts b/src/game/PhysicsEngine.ts\nindex 4aad122..8c088bb 100644\n--- a/src/game/PhysicsEngine.ts\n+++ b/src/game/PhysicsEngine.ts\n@@ -46,6 +46,20 @@ export interface PhysicsStats {\n   fuelRodsDepletedIce: number;\n }\n \n+/**\n+ * Per-cell performance data for UI display\n+ */\n+export interface CellPerformance {\n+  /** Net heat exchange with neighbors (positive = gained heat, negative = lost heat) */\n+  heatExchange: number;\n+  /** For turbines: power generated this tick */\n+  powerGenerated: number;\n+  /** For substations: power sold this tick */\n+  powerSold: number;\n+  /** For fuel rods: initial lifetime when placed */\n+  initialLifetime: number;\n+}\n+\n /**\n  * Per-tick heat balance statistics for debugging/display\n  * Conservation law: heatGenerated = heatVentilated + heatConvertedToPower + heatLostToEnvironment + heatDeltaInGrid\n@@ -85,6 +99,8 @@ export class PhysicsEngine {\n     fuelRodsDepletedCool: 0,\n     fuelRodsDepletedIce: 0,\n   };\n+  /** Per-cell performance data, updated each tick */\n+  private cellPerformance: Map<string, CellPerformance> = new Map();\n \n   constructor(\n     private gridManager: GridManager,\n@@ -92,6 +108,64 @@ export class PhysicsEngine {\n     private isSecretPurchased: (type: SecretUpgradeType) => boolean = () => false\n   ) {}\n \n+  /**\n+   * Get cell performance key\n+   */\n+  private getCellKey(x: number, y: number): string {\n+    return `${x},${y}`;\n+  }\n+\n+  /**\n+   * Get performance data for a cell\n+   */\n+  getCellPerformance(x: number, y: number): CellPerformance | null {\n+    return this.cellPerformance.get(this.getCellKey(x, y)) ?? null;\n+  }\n+\n+  /**\n+   * Initialize cell performance data for all cells\n+   */\n+  private initCellPerformance(): void {\n+    this.cellPerformance.clear();\n+    const gridSize = this.gridManager.getSize();\n+    for (let y = 0; y < gridSize; y++) {\n+      for (let x = 0; x < gridSize; x++) {\n+        this.cellPerformance.set(this.getCellKey(x, y), {\n+          heatExchange: 0,\n+          powerGenerated: 0,\n+          powerSold: 0,\n+          initialLifetime: 0,\n+        });\n+      }\n+    }\n+  }\n+\n+  /**\n+   * Track initial fuel lifetime for fuel rods (for UI progress bars)\n+   */\n+  private trackInitialFuelLifetime(): void {\n+    const grid = this.gridManager.getGridRef();\n+    const gridSize = this.gridManager.getSize();\n+\n+    for (let y = 0; y < gridSize; y++) {\n+      for (let x = 0; x < gridSize; x++) {\n+        const cell = grid[y][x];\n+        if (cell.structure === StructureType.FuelRod && cell.lifetime > 0) {\n+          const perf = this.cellPerformance.get(this.getCellKey(x, y));\n+          if (perf) {\n+            // Calculate initial lifetime based on tier and upgrades\n+            // This is used for showing the lifetime progress bar\n+            const upgradeLevel = this.getUpgradeLevel(UpgradeType.FuelLifetime);\n+            const baseLifetime = STRUCTURE_BASE_STATS[StructureType.FuelRod].baseLifetime;\n+            const tierLifetime = baseLifetime * Math.pow(10, cell.tier - 1);\n+            const upgradeBonus = upgradeLevel * UPGRADE_DEFINITIONS[UpgradeType.FuelLifetime].improvementPerLevel;\n+            perf.initialLifetime = tierLifetime + upgradeBonus;\n+          }\n+        }\n+      }\n+    }\n+  }\n+\n   /**\n    * Add an event listener for physics events\n    */\n@@ -356,10 +430,15 @@ export class PhysicsEngine {\n       }\n     }\n \n-    // Apply deltas\n+    // Apply deltas and track per-cell heat exchange\n     for (let y = 0; y < gridSize; y++) {\n       for (let x = 0; x < gridSize; x++) {\n         grid[y][x].heat = Math.max(0, grid[y][x].heat + heatDeltas[y][x]);\n+        // Update cell performance with heat exchange\n+        const perf = this.cellPerformance.get(this.getCellKey(x, y));\n+        if (perf) {\n+          perf.heatExchange = heatDeltas[y][x];\n+        }\n       }\n     }\n \n@@ -417,6 +496,12 @@ export class PhysicsEngine {\n         cell.power += powerGenerated;\n         this.stats.totalPowerGenerated += powerGenerated;\n         totalHeatConvertedToPower += heatConsumed;\n+\n+        // Track per-turbine power generated\n+        const perf = this.cellPerformance.get(this.getCellKey(x, y));\n+        if (perf) {\n+          perf.powerGenerated = powerGenerated;\n+        }\n       }\n     }\n \n@@ -460,6 +545,12 @@ export class PhysicsEngine {\n           this.stats.totalMoneyEarned += earnings;\n           cell.power -= powerToSell;\n \n+          // Track per-substation power sold\n+          const perf = this.cellPerformance.get(this.getCellKey(x, y));\n+          if (perf) {\n+            perf.powerSold = powerToSell;\n+          }\n+\n           if (earnings > 0) {\n             this.emitEvent({\n               type: 'power_sold',\n@@ -570,6 +661,12 @@ export class PhysicsEngine {\n    * Returns the money earned, meltdown status, and heat balance statistics\n    */\n   tick(): { moneyEarned: number; meltdown: boolean; heatBalance: TickHeatBalance } {\n+    // Initialize per-cell performance tracking\n+    this.initCellPerformance();\n+\n+    // Track initial fuel lifetime before processing\n+    this.trackInitialFuelLifetime();\n+\n     // Capture initial heat state\n     const heatBefore = this.getTotalGridHeat();",
+          "actualWorkers": 1
+        },
+        "id": "chromium",
+        "name": "chromium",
+        "testDir": "/home/runner/work/claudetest123/claudetest123/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 30000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "html",
+        {
+          "outputFolder": "playwright-report"
+        }
+      ],
+      [
+        "list",
+        null
+      ],
+      [
+        "json",
+        {
+          "outputFile": "test-results/results.json"
+        }
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "runAgents": "none",
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.58.0",
+    "workers": 1,
+    "webServer": {
+      "command": "npm run serve",
+      "url": "http://localhost:3000",
+      "reuseExistingServer": false,
+      "timeout": 120000
+    }
+  },
+  "suites": [
+    {
+      "title": "heat-game.spec.ts",
+      "file": "heat-game.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Heat Game E2E Tests",
+          "file": "heat-game.spec.ts",
+          "line": 40,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should load the game and display initial state",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 598,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-31T18:25:57.500Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-2428b-e-and-display-initial-state-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-2428b-e-and-display-initial-state-chromium/attachments/browser-logs-252e98eebb6d2a6fd5612fd184955e74f7d8fa0e.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-1f7f90ca45f76c134f4d",
+              "file": "heat-game.spec.ts",
+              "line": 86,
+              "column": 3
+            },
+            {
+              "title": "should place a Fuel Rod on the grid",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 665,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-31T18:25:59.313Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-05fff-lace-a-Fuel-Rod-on-the-grid-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-05fff-lace-a-Fuel-Rod-on-the-grid-chromium/attachments/browser-logs-daa597c1e58cdd3735064670bc098a56f535a7d5.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-a31bde006f3c29450fad",
+              "file": "heat-game.spec.ts",
+              "line": 116,
+              "column": 3
+            },
+            {
+              "title": "should place multiple structures and observe heat dynamics",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1204,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-31T18:25:59.991Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-edba4-s-and-observe-heat-dynamics-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-edba4-s-and-observe-heat-dynamics-chromium/attachments/browser-logs-a9526112523c68aa24fe78334be3ec2af4a1ba62.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-2ed04ebe32d9c471053a",
+              "file": "heat-game.spec.ts",
+              "line": 148,
+              "column": 3
+            },
+            {
+              "title": "should demolish a structure with right-click",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 517,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-31T18:26:01.211Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-53724--structure-with-right-click-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-53724--structure-with-right-click-chromium/attachments/browser-logs-d97b4f4e87a5cc31e1b5dee61d33b7cf6ee7bb2f.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-ff211d87a2ad19067056",
+              "file": "heat-game.spec.ts",
+              "line": 185,
+              "column": 3
+            },
+            {
+              "title": "should build a power generation setup",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1708,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-31T18:26:01.739Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-206ae-ld-a-power-generation-setup-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-206ae-ld-a-power-generation-setup-chromium/attachments/browser-logs-6db27ca250b3a1a4083663dd5a90aeedb0e1a354.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-abe0096aa1a1c45a3b34",
+              "file": "heat-game.spec.ts",
+              "line": 216,
+              "column": 3
+            },
+            {
+              "title": "should show heat buildup with clustered fuel rods",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1604,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-31T18:26:03.462Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-1ce31-up-with-clustered-fuel-rods-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-1ce31-up-with-clustered-fuel-rods-chromium/attachments/browser-logs-4108f70a5376472a80710ba1c287f526e1cfc9b4.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-ac87d21624a439db98b8",
+              "file": "heat-game.spec.ts",
+              "line": 253,
+              "column": 3
+            },
+            {
+              "title": "should not allow building without sufficient money",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1448,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-31T18:26:05.081Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-ee0f6-ng-without-sufficient-money-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-ee0f6-ng-without-sufficient-money-chromium/attachments/browser-logs-67852c21b9cbe344288f7cfb81aa3e88ded21441.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-b096005e15a85f67c2a8",
+              "file": "heat-game.spec.ts",
+              "line": 291,
+              "column": 3
+            },
+            {
+              "title": "should handle rapid clicking on the grid",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1217,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-31T18:26:06.547Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-c664c--rapid-clicking-on-the-grid-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-c664c--rapid-clicking-on-the-grid-chromium/attachments/browser-logs-8830c25d0c901f07d14f24299509ec6ff3fc0a0b.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-1b3f7a34798ed668be9c",
+              "file": "heat-game.spec.ts",
+              "line": 333,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-01-31T18:25:51.163Z",
+    "duration": 16679.314000000002,
+    "expected": 8,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}
