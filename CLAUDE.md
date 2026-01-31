@@ -24,7 +24,6 @@ HeatGame (orchestrator)
 
 **Keep tests lean.** Only test:
 - Data loss scenarios (serialization, grid expansion)
-- Catastrophic behaviors (meltdowns)
 - Complex interactions (upgrades affecting physics)
 - Edge cases that would be hard to debug
 
