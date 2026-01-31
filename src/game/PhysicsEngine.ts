@@ -240,25 +240,31 @@ export class PhysicsEngine {
   }
 
   /**
-   * Get effective conductivity for a cell (with upgrades)
+   * Get effective heat exchange factor for a cell (with upgrades)
+   * Returns a value in [0, 1] range where:
+   * - 1.0 = cells fully equalize temperature in one tick
+   * - 0.5 = cells move halfway toward equalization
+   * - 0.0 = no heat exchange
    */
   getEffectiveConductivity(cell: Cell): number {
     const baseConductivity = STRUCTURE_BASE_STATS[cell.structure].conductivity;
+    let conductivity = baseConductivity;
 
     if (cell.structure === StructureType.Turbine) {
       const level = this.getUpgradeLevel(UpgradeType.TurbineConductivity);
       const definition = UPGRADE_DEFINITIONS[UpgradeType.TurbineConductivity];
-      return baseConductivity + (level * definition.improvementPerLevel);
+      conductivity = baseConductivity + (level * definition.improvementPerLevel);
     }
 
     if (cell.structure === StructureType.Insulator) {
       const level = this.getUpgradeLevel(UpgradeType.InsulatorConductivity);
       if (level > 0) {
-        return baseConductivity * Math.pow(0.5, level);
+        conductivity = baseConductivity * Math.pow(0.5, level);
       }
     }
 
-    return baseConductivity;
+    // Clamp to [0, 1] range to ensure algorithm stability
+    return Math.min(1, Math.max(0, conductivity));
   }
 
   /**
@@ -388,6 +394,15 @@ export class PhysicsEngine {
   /**
    * Process heat transfer between cells
    * Returns the total heat lost to the environment (edge cells)
+   *
+   * Heat Exchange Algorithm:
+   * - Each cell pair exchanges heat based on their average heat exchange factor
+   * - When avgRate = 1: cells fully equalize temperature
+   * - When avgRate = 0.5: cells move halfway toward equalization
+   * - When avgRate = 0: no heat exchange
+   * - Formula: transfer = tempDiff * avgRate / 2
+   * - All calculations use temperatures from start of tick (order-independent)
+   * - Total heat is conserved (each transfer adds to one cell, subtracts from other)
    */
   processHeatTransfer(): number {
     const grid = this.gridManager.getGridRef();
@@ -399,21 +414,22 @@ export class PhysicsEngine {
       heatDeltas.push(new Array(gridSize).fill(0));
     }
 
-    const transferRate = CORE_SETTINGS.BASE_HEAT_TRANSFER_RATE;
-
     for (let y = 0; y < gridSize; y++) {
       for (let x = 0; x < gridSize; x++) {
         const cell = grid[y][x];
-        const cellConductivity = this.getEffectiveConductivity(cell);
+        const cellFactor = this.getEffectiveConductivity(cell);
         const neighbors = this.gridManager.getNeighbors(x, y);
 
         for (const neighbor of neighbors) {
-          const neighborConductivity = this.getEffectiveConductivity(neighbor);
+          const neighborFactor = this.getEffectiveConductivity(neighbor);
           const heatDiff = cell.heat - neighbor.heat;
 
+          // Only process when cell is hotter (each pair processed once)
           if (heatDiff > 0) {
-            const conductivity = Math.min(cellConductivity, neighborConductivity);
-            const transfer = heatDiff * transferRate * conductivity;
+            // Average of both cells' heat exchange factors
+            const avgRate = (cellFactor + neighborFactor) / 2;
+            // Transfer half the diff scaled by rate (rate=1 means full equalization)
+            const transfer = heatDiff * avgRate / 2;
             heatDeltas[y][x] -= transfer;
             heatDeltas[neighbor.y][neighbor.x] += transfer;
           }

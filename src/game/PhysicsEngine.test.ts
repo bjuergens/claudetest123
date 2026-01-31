@@ -79,6 +79,101 @@ describe('PhysicsEngine', () => {
 
       expect(insulatorHeatAfter).toBeGreaterThan(grid.getCell(5, 5)!.heat);
     });
+
+    it('heat is conserved during cell-to-cell transfer (interior cells)', () => {
+      // Place cells in the interior so no heat is lost to environment
+      // Use cells away from edges (need at least 1 cell buffer from all sides)
+      grid.getCellRef(5, 5)!.heat = 1000;
+      grid.getCellRef(5, 6)!.heat = 0;
+      grid.getCellRef(6, 5)!.heat = 500;
+      grid.getCellRef(6, 6)!.heat = 200;
+
+      // Calculate total heat before (all cells in grid)
+      let totalBefore = 0;
+      for (let y = 0; y < 16; y++) {
+        for (let x = 0; x < 16; x++) {
+          totalBefore += grid.getCell(x, y)!.heat;
+        }
+      }
+
+      const heatLostToEnv = physics.processHeatTransfer();
+
+      // Calculate total heat after
+      let totalAfter = 0;
+      for (let y = 0; y < 16; y++) {
+        for (let x = 0; x < 16; x++) {
+          totalAfter += grid.getCell(x, y)!.heat;
+        }
+      }
+
+      // Heat lost to environment + remaining heat should equal original
+      expect(totalAfter + heatLostToEnv).toBeCloseTo(totalBefore, 5);
+    });
+
+    it('high exchange rate cells converge quickly', () => {
+      // Two void cells (rate 1.0 each, avg = 1.0) should exchange heat quickly
+      // Surround with insulators (rate 0.01) to isolate the exchange
+      const cell1 = grid.getCellRef(5, 5)!;
+      cell1.structure = StructureType.VoidCell;
+      cell1.heat = 100;
+
+      const cell2 = grid.getCellRef(5, 6)!;
+      cell2.structure = StructureType.VoidCell;
+      cell2.heat = 200;
+
+      // Surround with insulators at average temp to minimize interference
+      const avgTemp = 150;
+      for (const [x, y] of [[5, 4], [4, 5], [6, 5], [4, 6], [6, 6], [5, 7]]) {
+        const neighbor = grid.getCellRef(x, y)!;
+        neighbor.structure = StructureType.Insulator;
+        neighbor.heat = avgTemp;
+      }
+
+      physics.processHeatTransfer();
+
+      // With rate 1.0, the void cells should nearly equalize (diff reduces to near 0)
+      // Small deviation from insulator neighbors (avg rate ~0.5 with insulators)
+      const heat1 = grid.getCell(5, 5)!.heat;
+      const heat2 = grid.getCell(5, 6)!.heat;
+
+      // They should have moved very close to each other
+      expect(heat1).toBeGreaterThan(130);
+      expect(heat2).toBeLessThan(170);
+      expect(heat2 - heat1).toBeLessThan(40); // Started at 100 diff, should be much smaller
+    });
+
+    it('moderate exchange rate cells move toward equalization', () => {
+      // Two turbines (rate 0.2 each, avg = 0.2)
+      // Surround with insulators to minimize exchange with other neighbors
+      const cell1 = grid.getCellRef(5, 5)!;
+      cell1.structure = StructureType.Turbine;
+      cell1.heat = 100;
+
+      const cell2 = grid.getCellRef(5, 6)!;
+      cell2.structure = StructureType.Turbine;
+      cell2.heat = 200;
+
+      // Set all other neighbors to same average temp to isolate the exchange
+      // Use insulators (rate 0.01) to minimize interference
+      for (const [x, y] of [[5, 4], [4, 5], [6, 5], [4, 6], [6, 6], [5, 7]]) {
+        const neighbor = grid.getCellRef(x, y)!;
+        neighbor.structure = StructureType.Insulator;
+        neighbor.heat = 150; // average of 100 and 200
+      }
+
+      physics.processHeatTransfer();
+
+      // The two turbines should have moved toward each other
+      // With rate 0.2, diff of 100 reduces by 20, so cells move ~10 toward each other
+      const heat1 = grid.getCell(5, 5)!.heat;
+      const heat2 = grid.getCell(5, 6)!.heat;
+
+      // Heat1 should have increased, heat2 should have decreased
+      expect(heat1).toBeGreaterThan(100);
+      expect(heat2).toBeLessThan(200);
+      // Their difference should have reduced
+      expect(heat2 - heat1).toBeLessThan(100);
+    });
   });
 
   describe('meltdown behavior', () => {
