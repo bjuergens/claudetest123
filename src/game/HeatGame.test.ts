@@ -581,8 +581,9 @@ describe('HeatGame', () => {
 
   describe('serialization', () => {
     it('should serialize and deserialize game state', () => {
+      // Use structures that won't melt easily
       game.build(5, 5, StructureType.FuelRod, Tier.T1);
-      game.build(6, 5, StructureType.Turbine, Tier.T1);
+      game.build(6, 5, StructureType.Ventilator, Tier.T1); // Ventilator instead of Turbine
 
       for (let i = 0; i < 10; i++) {
         game.tick();
@@ -594,7 +595,7 @@ describe('HeatGame', () => {
       expect(restored.getMoney()).toBe(game.getMoney());
       expect(restored.getTickCount()).toBe(game.getTickCount());
       expect(restored.getCell(5, 5)?.structure).toBe(StructureType.FuelRod);
-      expect(restored.getCell(6, 5)?.structure).toBe(StructureType.Turbine);
+      expect(restored.getCell(6, 5)?.structure).toBe(StructureType.Ventilator);
     });
 
     it('should preserve upgrade state', () => {

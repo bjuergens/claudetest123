@@ -48,6 +48,8 @@ export interface GameStats {
   manualClicks: number;
   structuresBuilt: number;
   fuelRodsDepleted: number;
+  fuelRodsDepletedCool: number;
+  fuelRodsDepletedIce: number;
 }
 
 export interface GameState {
@@ -105,7 +107,8 @@ export class HeatGame {
     this.upgradeManager = new UpgradeManager();
     this.physicsEngine = new PhysicsEngine(
       this.gridManager,
-      (type: UpgradeType) => this.upgradeManager.getUpgradeLevel(type)
+      (type: UpgradeType) => this.upgradeManager.getUpgradeLevel(type),
+      (type: SecretUpgradeType) => this.upgradeManager.isSecretPurchased(type)
     );
 
     this.money = initialMoney;
@@ -126,6 +129,8 @@ export class HeatGame {
       manualClicks: 0,
       structuresBuilt: 0,
       fuelRodsDepleted: 0,
+      fuelRodsDepletedCool: 0,
+      fuelRodsDepletedIce: 0,
     };
   }
 
@@ -436,6 +441,8 @@ export class HeatGame {
       totalMoneyEarned: this.stats.totalMoneyEarned,
       demolishCount: this.stats.demolishCount,
       ticksAtHighHeat: this.stats.ticksAtHighHeat,
+      fuelRodsDepletedCool: this.stats.fuelRodsDepletedCool,
+      fuelRodsDepletedIce: this.stats.fuelRodsDepletedIce,
     };
 
     this.upgradeManager.checkSecretUnlocks(stats);
@@ -456,6 +463,8 @@ export class HeatGame {
     this.stats.totalPowerGenerated = physicsStats.totalPowerGenerated;
     this.stats.ticksAtHighHeat = physicsStats.ticksAtHighHeat;
     this.stats.fuelRodsDepleted = physicsStats.fuelRodsDepleted;
+    this.stats.fuelRodsDepletedCool = physicsStats.fuelRodsDepletedCool;
+    this.stats.fuelRodsDepletedIce = physicsStats.fuelRodsDepletedIce;
 
     // Add money earned from power sales
     this.money += result.moneyEarned;
@@ -502,6 +511,8 @@ export class HeatGame {
       totalMoneyEarned: state.stats.totalMoneyEarned,
       fuelRodsDepleted: state.stats.fuelRodsDepleted,
       ticksAtHighHeat: state.stats.ticksAtHighHeat,
+      fuelRodsDepletedCool: state.stats.fuelRodsDepletedCool ?? 0,
+      fuelRodsDepletedIce: state.stats.fuelRodsDepletedIce ?? 0,
     });
 
     return game;

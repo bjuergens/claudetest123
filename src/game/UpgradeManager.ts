@@ -38,6 +38,8 @@ export interface UnlockStats {
   totalMoneyEarned: number;
   demolishCount: number;
   ticksAtHighHeat: number;
+  fuelRodsDepletedCool: number;
+  fuelRodsDepletedIce: number;
 }
 
 /**

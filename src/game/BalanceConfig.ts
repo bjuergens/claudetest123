@@ -485,6 +485,8 @@ export enum SecretUpgradeType {
   VoidCellUnlock = 'void_cell_unlock',
   Overclock = 'overclock',
   Salvage = 'salvage',
+  FuelMeltTempBonus = 'fuel_melt_temp_bonus', // Unlocked by keeping fuel rods under 200°C
+  CoolRunning = 'cool_running', // Unlocked by keeping fuel rods under 100°C
 }
 
 export interface SecretUpgradeDefinition {
@@ -568,6 +570,22 @@ export const SECRET_UPGRADE_DEFINITIONS: Record<SecretUpgradeType, SecretUpgrade
     cost: 2000,
     isToggle: false,
   },
+
+  [SecretUpgradeType.FuelMeltTempBonus]: {
+    name: 'Cryogenic Fuel Casing',
+    description: 'Increases fuel rod melting temperature by 500°C. Achieved through careful temperature management.',
+    hint: '???',
+    cost: 3000,
+    isToggle: false,
+  },
+
+  [SecretUpgradeType.CoolRunning]: {
+    name: 'Superconductor Technology',
+    description: 'Increases fuel rod melting temperature by 1000°C. Mastery of sub-100°C fuel operation.',
+    hint: '???',
+    cost: 10000,
+    isToggle: false,
+  },
 };
 
 // =============================================================================
@@ -575,7 +593,7 @@ export const SECRET_UPGRADE_DEFINITIONS: Record<SecretUpgradeType, SecretUpgrade
 // =============================================================================
 
 export interface SecretUnlockCondition {
-  type: 'meltdown' | 'fill_grid' | 'survive_heat' | 'total_earned' | 'demolish_count';
+  type: 'meltdown' | 'fill_grid' | 'survive_heat' | 'total_earned' | 'demolish_count' | 'fuel_depleted_cool' | 'fuel_depleted_ice';
   /** Threshold value for the condition */
   threshold: number;
   /** For survive_heat: percentage of max temp (0.9 = 90%) */
@@ -622,6 +640,16 @@ export const SECRET_UNLOCK_CONDITIONS: Record<SecretUpgradeType, SecretUnlockCon
   [SecretUpgradeType.Salvage]: {
     type: 'demolish_count',
     threshold: 100, // Demolish 100 structures
+  },
+
+  [SecretUpgradeType.FuelMeltTempBonus]: {
+    type: 'fuel_depleted_cool',
+    threshold: 10, // Deplete 10 fuel rods that never exceeded 200°C
+  },
+
+  [SecretUpgradeType.CoolRunning]: {
+    type: 'fuel_depleted_ice',
+    threshold: 10, // Deplete 10 fuel rods that never exceeded 100°C
   },
 };
 
@@ -697,6 +725,8 @@ export function getSecretUnlockProgress(
     totalMoneyEarned: number;
     demolishCount: number;
     ticksAtHighHeat: number;
+    fuelRodsDepletedCool: number;
+    fuelRodsDepletedIce: number;
   }
 ): { current: number; required: number; unlocked: boolean } {
   const condition = SECRET_UNLOCK_CONDITIONS[upgradeType];
@@ -717,6 +747,12 @@ export function getSecretUnlockProgress(
       break;
     case 'survive_heat':
       current = gameStats.ticksAtHighHeat;
+      break;
+    case 'fuel_depleted_cool':
+      current = gameStats.fuelRodsDepletedCool;
+      break;
+    case 'fuel_depleted_ice':
+      current = gameStats.fuelRodsDepletedIce;
       break;
   }
 
