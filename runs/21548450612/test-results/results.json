@@ -1,0 +1,512 @@
+{
+  "config": {
+    "configFile": "/home/runner/work/claudetest123/claudetest123/playwright.config.ts",
+    "rootDir": "/home/runner/work/claudetest123/claudetest123/e2e",
+    "forbidOnly": true,
+    "fullyParallel": true,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "ci": {
+        "commitHref": "https://github.com/bjuergens/claudetest123/commit/51457664de5222bfbcad5d6cf9cb3e2c337037c3",
+        "commitHash": "51457664de5222bfbcad5d6cf9cb3e2c337037c3",
+        "prHref": "https://github.com/bjuergens/claudetest123/pull/11",
+        "prTitle": "Add turbine 100°C threshold and temperature-based secret upgrades",
+        "prBaseHash": "32f9ed456958cf84333f2a9f4aa1a15c39a9677e",
+        "buildHref": "https://github.com/bjuergens/claudetest123/actions/runs/21548450612"
+      },
+      "gitCommit": {
+        "shortHash": "5145766",
+        "hash": "51457664de5222bfbcad5d6cf9cb3e2c337037c3",
+        "subject": "Merge 2806cc0f985fbe34ea19bdf728a9795bd829d55b into 32f9ed456958cf84333f2a9f4aa1a15c39a9677e",
+        "body": "Merge 2806cc0f985fbe34ea19bdf728a9795bd829d55b into 32f9ed456958cf84333f2a9f4aa1a15c39a9677e\n",
+        "author": {
+          "name": "Björn Jürgens",
+          "email": "4362465+bjuergens@users.noreply.github.com",
+          "time": 1769881861000
+        },
+        "committer": {
+          "name": "GitHub",
+          "email": "noreply@github.com",
+          "time": 1769881861000
+        },
+        "branch": "HEAD"
+      },
+      "gitDiff": "diff --git a/src/game/BalanceConfig.ts b/src/game/BalanceConfig.ts\nindex a0bbb1d..933fa42 100644\n--- a/src/game/BalanceConfig.ts\n+++ b/src/game/BalanceConfig.ts\n@@ -485,6 +485,8 @@ export enum SecretUpgradeType {\n   VoidCellUnlock = 'void_cell_unlock',\n   Overclock = 'overclock',\n   Salvage = 'salvage',\n+  FuelMeltTempBonus = 'fuel_melt_temp_bonus', // Unlocked by keeping fuel rods under 200°C\n+  CoolRunning = 'cool_running', // Unlocked by keeping fuel rods under 100°C\n }\n \n export interface SecretUpgradeDefinition {\n@@ -568,6 +570,22 @@ export const SECRET_UPGRADE_DEFINITIONS: Record<SecretUpgradeType, SecretUpgrade\n     cost: 2000,\n     isToggle: false,\n   },\n+\n+  [SecretUpgradeType.FuelMeltTempBonus]: {\n+    name: 'Cryogenic Fuel Casing',\n+    description: 'Increases fuel rod melting temperature by 500°C. Achieved through careful temperature management.',\n+    hint: '???',\n+    cost: 3000,\n+    isToggle: false,\n+  },\n+\n+  [SecretUpgradeType.CoolRunning]: {\n+    name: 'Superconductor Technology',\n+    description: 'Increases fuel rod melting temperature by 1000°C. Mastery of sub-100°C fuel operation.',\n+    hint: '???',\n+    cost: 10000,\n+    isToggle: false,\n+  },\n };\n \n // =============================================================================\n@@ -575,7 +593,7 @@ export const SECRET_UPGRADE_DEFINITIONS: Record<SecretUpgradeType, SecretUpgrade\n // =============================================================================\n \n export interface SecretUnlockCondition {\n-  type: 'meltdown' | 'fill_grid' | 'survive_heat' | 'total_earned' | 'demolish_count';\n+  type: 'meltdown' | 'fill_grid' | 'survive_heat' | 'total_earned' | 'demolish_count' | 'fuel_depleted_cool' | 'fuel_depleted_ice';\n   /** Threshold value for the condition */\n   threshold: number;\n   /** For survive_heat: percentage of max temp (0.9 = 90%) */\n@@ -623,6 +641,16 @@ export const SECRET_UNLOCK_CONDITIONS: Record<SecretUpgradeType, SecretUnlockCon\n     type: 'demolish_count',\n     threshold: 100, // Demolish 100 structures\n   },\n+\n+  [SecretUpgradeType.FuelMeltTempBonus]: {\n+    type: 'fuel_depleted_cool',\n+    threshold: 10, // Deplete 10 fuel rods that never exceeded 200°C\n+  },\n+\n+  [SecretUpgradeType.CoolRunning]: {\n+    type: 'fuel_depleted_ice',\n+    threshold: 10, // Deplete 10 fuel rods that never exceeded 100°C\n+  },\n };\n \n // =============================================================================\n@@ -697,6 +725,8 @@ export function getSecretUnlockProgress(\n     totalMoneyEarned: number;\n     demolishCount: number;\n     ticksAtHighHeat: number;\n+    fuelRodsDepletedCool: number;\n+    fuelRodsDepletedIce: number;\n   }\n ): { current: number; required: number; unlocked: boolean } {\n   const condition = SECRET_UNLOCK_CONDITIONS[upgradeType];\n@@ -718,6 +748,12 @@ export function getSecretUnlockProgress(\n     case 'survive_heat':\n       current = gameStats.ticksAtHighHeat;\n       break;\n+    case 'fuel_depleted_cool':\n+      current = gameStats.fuelRodsDepletedCool;\n+      break;\n+    case 'fuel_depleted_ice':\n+      current = gameStats.fuelRodsDepletedIce;\n+      break;\n   }\n \n   return {\ndiff --git a/src/game/GridManager.ts b/src/game/GridManager.ts\nindex 0e158a8..f445065 100644\n--- a/src/game/GridManager.ts\n+++ b/src/game/GridManager.ts\n@@ -17,6 +17,8 @@ export interface Cell {\n   lifetime: number;\n   /** Whether this is an exotic variant (fuel rods only) */\n   isExotic: boolean;\n+  /** Maximum temperature this cell has reached (fuel rods only, for secret unlocks) */\n+  maxTempReached: number;\n }\n \n export class GridManager {\n@@ -56,6 +58,7 @@ export class GridManager {\n       power: 0,\n       lifetime: 0,\n       isExotic: false,\n+      maxTempReached: 0,\n     };\n   }\n \ndiff --git a/src/game/HeatGame.test.ts b/src/game/HeatGame.test.ts\nindex 6abd6a3..6cd0e6d 100644\n--- a/src/game/HeatGame.test.ts\n+++ b/src/game/HeatGame.test.ts\n@@ -581,8 +581,9 @@ describe('HeatGame', () => {\n \n   describe('serialization', () => {\n     it('should serialize and deserialize game state', () => {\n+      // Use structures that won't melt easily\n       game.build(5, 5, StructureType.FuelRod, Tier.T1);\n-      game.build(6, 5, StructureType.Turbine, Tier.T1);\n+      game.build(6, 5, StructureType.Ventilator, Tier.T1); // Ventilator instead of Turbine\n \n       for (let i = 0; i < 10; i++) {\n         game.tick();\n@@ -594,7 +595,7 @@ describe('HeatGame', () => {\n       expect(restored.getMoney()).toBe(game.getMoney());\n       expect(restored.getTickCount()).toBe(game.getTickCount());\n       expect(restored.getCell(5, 5)?.structure).toBe(StructureType.FuelRod);\n-      expect(restored.getCell(6, 5)?.structure).toBe(StructureType.Turbine);\n+      expect(restored.getCell(6, 5)?.structure).toBe(StructureType.Ventilator);\n     });\n \n     it('should preserve upgrade state', () => {\ndiff --git a/src/game/HeatGame.ts b/src/game/HeatGame.ts\nindex eeca20d..ce415eb 100644\n--- a/src/game/HeatGame.ts\n+++ b/src/game/HeatGame.ts\n@@ -48,6 +48,8 @@ export interface GameStats {\n   manualClicks: number;\n   structuresBuilt: number;\n   fuelRodsDepleted: number;\n+  fuelRodsDepletedCool: number;\n+  fuelRodsDepletedIce: number;\n }\n \n export interface GameState {\n@@ -105,7 +107,8 @@ export class HeatGame {\n     this.upgradeManager = new UpgradeManager();\n     this.physicsEngine = new PhysicsEngine(\n       this.gridManager,\n-      (type: UpgradeType) => this.upgradeManager.getUpgradeLevel(type)\n+      (type: UpgradeType) => this.upgradeManager.getUpgradeLevel(type),\n+      (type: SecretUpgradeType) => this.upgradeManager.isSecretPurchased(type)\n     );\n \n     this.money = initialMoney;\n@@ -126,6 +129,8 @@ export class HeatGame {\n       manualClicks: 0,\n       structuresBuilt: 0,\n       fuelRodsDepleted: 0,\n+      fuelRodsDepletedCool: 0,\n+      fuelRodsDepletedIce: 0,\n     };\n   }\n \n@@ -436,6 +441,8 @@ export class HeatGame {\n       totalMoneyEarned: this.stats.totalMoneyEarned,\n       demolishCount: this.stats.demolishCount,\n       ticksAtHighHeat: this.stats.ticksAtHighHeat,\n+      fuelRodsDepletedCool: this.stats.fuelRodsDepletedCool,\n+      fuelRodsDepletedIce: this.stats.fuelRodsDepletedIce,\n     };\n \n     this.upgradeManager.checkSecretUnlocks(stats);\n@@ -456,6 +463,8 @@ export class HeatGame {\n     this.stats.totalPowerGenerated = physicsStats.totalPowerGenerated;\n     this.stats.ticksAtHighHeat = physicsStats.ticksAtHighHeat;\n     this.stats.fuelRodsDepleted = physicsStats.fuelRodsDepleted;\n+    this.stats.fuelRodsDepletedCool = physicsStats.fuelRodsDepletedCool;\n+    this.stats.fuelRodsDepletedIce = physicsStats.fuelRodsDepletedIce;\n \n     // Add money earned from power sales\n     this.money += result.moneyEarned;\n@@ -502,6 +511,8 @@ export class HeatGame {\n       totalMoneyEarned: state.stats.totalMoneyEarned,\n       fuelRodsDepleted: state.stats.fuelRodsDepleted,\n       ticksAtHighHeat: state.stats.ticksAtHighHeat,\n+      fuelRodsDepletedCool: state.stats.fuelRodsDepletedCool ?? 0,\n+      fuelRodsDepletedIce: state.stats.fuelRodsDepletedIce ?? 0,\n     });\n \n     return game;\ndiff --git a/src/game/PhysicsEngine.test.ts b/src/game/PhysicsEngine.test.ts\nindex b1487d7..0daa6ba 100644\n--- a/src/game/PhysicsEngine.test.ts\n+++ b/src/game/PhysicsEngine.test.ts\n@@ -122,10 +122,17 @@ describe('PhysicsEngine', () => {\n       const substation = grid.getCellRef(5, 7)!;\n       substation.structure = StructureType.Substation;\n \n-      const result = physics.tick();\n-\n-      expect(result.moneyEarned).toBeGreaterThan(0);\n-      expect(result.meltdown).toBe(false);\n+      // Run multiple ticks - turbines only work above 100°C\n+      let totalMoney = 0;\n+      let meltdown = false;\n+      for (let i = 0; i < 50 && totalMoney === 0; i++) {\n+        const result = physics.tick();\n+        totalMoney += result.moneyEarned;\n+        if (result.meltdown) meltdown = true;\n+      }\n+\n+      expect(totalMoney).toBeGreaterThan(0);\n+      expect(meltdown).toBe(false);\n     });\n   });\n \ndiff --git a/src/game/PhysicsEngine.ts b/src/game/PhysicsEngine.ts\nindex ef4c504..8a745c8 100644\n--- a/src/game/PhysicsEngine.ts\n+++ b/src/game/PhysicsEngine.ts\n@@ -14,6 +14,7 @@ import {\n   ECONOMY,\n   UpgradeType,\n   UPGRADE_DEFINITIONS,\n+  SecretUpgradeType,\n   EXOTIC_FUEL,\n   getFuelHeatGeneration,\n } from './BalanceConfig.js';\n@@ -39,6 +40,10 @@ export interface PhysicsStats {\n   totalMoneyEarned: number;\n   fuelRodsDepleted: number;\n   ticksAtHighHeat: number;\n+  /** Fuel rods depleted that never exceeded 200°C */\n+  fuelRodsDepletedCool: number;\n+  /** Fuel rods depleted that never exceeded 100°C */\n+  fuelRodsDepletedIce: number;\n }\n \n /**\n@@ -52,11 +57,14 @@ export class PhysicsEngine {\n     totalMoneyEarned: 0,\n     fuelRodsDepleted: 0,\n     ticksAtHighHeat: 0,\n+    fuelRodsDepletedCool: 0,\n+    fuelRodsDepletedIce: 0,\n   };\n \n   constructor(\n     private gridManager: GridManager,\n-    private getUpgradeLevel: (type: UpgradeType) => number\n+    private getUpgradeLevel: (type: UpgradeType) => number,\n+    private isSecretPurchased: (type: SecretUpgradeType) => boolean = () => false\n   ) {}\n \n   /**\n@@ -101,6 +109,7 @@ export class PhysicsEngine {\n    */\n   getEffectiveMeltTemp(structure: StructureType): number {\n     const baseTemp = STRUCTURE_BASE_STATS[structure].meltTemp;\n+    let effectiveTemp = baseTemp;\n \n     let upgradeType: UpgradeType | null = null;\n     switch (structure) {\n@@ -115,10 +124,20 @@ export class PhysicsEngine {\n     if (upgradeType) {\n       const level = this.getUpgradeLevel(upgradeType);\n       const definition = UPGRADE_DEFINITIONS[upgradeType];\n-      return baseTemp + (level * definition.improvementPerLevel);\n+      effectiveTemp += level * definition.improvementPerLevel;\n     }\n \n-    return baseTemp;\n+    // Apply secret upgrade bonuses for fuel rods\n+    if (structure === StructureType.FuelRod) {\n+      if (this.isSecretPurchased(SecretUpgradeType.FuelMeltTempBonus)) {\n+        effectiveTemp += 500; // +500°C from Cryogenic Fuel Casing\n+      }\n+      if (this.isSecretPurchased(SecretUpgradeType.CoolRunning)) {\n+        effectiveTemp += 1000; // +1000°C from Superconductor Technology\n+      }\n+    }\n+\n+    return effectiveTemp;\n   }\n \n   /**\n@@ -215,6 +234,11 @@ export class PhysicsEngine {\n         }\n \n         cell.heat += heatGeneration;\n+\n+        // Track max temperature for secret unlock tracking\n+        if (cell.heat > cell.maxTempReached) {\n+          cell.maxTempReached = cell.heat;\n+        }\n       }\n     }\n   }\n@@ -237,6 +261,15 @@ export class PhysicsEngine {\n \n         if (cell.lifetime <= 0) {\n           this.stats.fuelRodsDepleted++;\n+\n+          // Track clean depletions for secret unlocks\n+          if (cell.maxTempReached <= 200) {\n+            this.stats.fuelRodsDepletedCool++;\n+          }\n+          if (cell.maxTempReached <= 100) {\n+            this.stats.fuelRodsDepletedIce++;\n+          }\n+\n           this.emitEvent({\n             type: 'fuel_depleted',\n             x,\n@@ -325,13 +358,15 @@ export class PhysicsEngine {\n       for (let x = 0; x < gridSize; x++) {\n         const cell = grid[y][x];\n         if (cell.structure !== StructureType.Turbine) continue;\n-        if (cell.heat <= 0) continue;\n+        if (cell.heat <= 100) continue; // Turbines only work above 100°C\n \n         const baseStats = STRUCTURE_BASE_STATS[StructureType.Turbine];\n         const maxHeatConsumption = baseStats.maxHeatConsumption * Math.pow(10, cell.tier - 1);\n         const powerGeneration = baseStats.powerGeneration;\n \n-        const heatConsumed = Math.min(cell.heat, maxHeatConsumption);\n+        // Only consume heat above 100°C\n+        const heatAbove100 = cell.heat - 100;\n+        const heatConsumed = Math.min(heatAbove100, maxHeatConsumption);\n         const powerGenerated = heatConsumed * powerGeneration;\n \n         cell.heat -= heatConsumed;\ndiff --git a/src/game/UpgradeManager.ts b/src/game/UpgradeManager.ts\nindex 34d4ec4..95cc3fe 100644\n--- a/src/game/UpgradeManager.ts\n+++ b/src/game/UpgradeManager.ts\n@@ -38,6 +38,8 @@ export interface UnlockStats {\n   totalMoneyEarned: number;\n   demolishCount: number;\n   ticksAtHighHeat: number;\n+  fuelRodsDepletedCool: number;\n+  fuelRodsDepletedIce: number;\n }\n \n /**",
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "/home/runner/work/claudetest123/claudetest123/test-results",
+        "repeatEach": 1,
+        "retries": 2,
+        "metadata": {
+          "ci": {
+            "commitHref": "https://github.com/bjuergens/claudetest123/commit/51457664de5222bfbcad5d6cf9cb3e2c337037c3",
+            "commitHash": "51457664de5222bfbcad5d6cf9cb3e2c337037c3",
+            "prHref": "https://github.com/bjuergens/claudetest123/pull/11",
+            "prTitle": "Add turbine 100°C threshold and temperature-based secret upgrades",
+            "prBaseHash": "32f9ed456958cf84333f2a9f4aa1a15c39a9677e",
+            "buildHref": "https://github.com/bjuergens/claudetest123/actions/runs/21548450612"
+          },
+          "gitCommit": {
+            "shortHash": "5145766",
+            "hash": "51457664de5222bfbcad5d6cf9cb3e2c337037c3",
+            "subject": "Merge 2806cc0f985fbe34ea19bdf728a9795bd829d55b into 32f9ed456958cf84333f2a9f4aa1a15c39a9677e",
+            "body": "Merge 2806cc0f985fbe34ea19bdf728a9795bd829d55b into 32f9ed456958cf84333f2a9f4aa1a15c39a9677e\n",
+            "author": {
+              "name": "Björn Jürgens",
+              "email": "4362465+bjuergens@users.noreply.github.com",
+              "time": 1769881861000
+            },
+            "committer": {
+              "name": "GitHub",
+              "email": "noreply@github.com",
+              "time": 1769881861000
+            },
+            "branch": "HEAD"
+          },
+          "gitDiff": "diff --git a/src/game/BalanceConfig.ts b/src/game/BalanceConfig.ts\nindex a0bbb1d..933fa42 100644\n--- a/src/game/BalanceConfig.ts\n+++ b/src/game/BalanceConfig.ts\n@@ -485,6 +485,8 @@ export enum SecretUpgradeType {\n   VoidCellUnlock = 'void_cell_unlock',\n   Overclock = 'overclock',\n   Salvage = 'salvage',\n+  FuelMeltTempBonus = 'fuel_melt_temp_bonus', // Unlocked by keeping fuel rods under 200°C\n+  CoolRunning = 'cool_running', // Unlocked by keeping fuel rods under 100°C\n }\n \n export interface SecretUpgradeDefinition {\n@@ -568,6 +570,22 @@ export const SECRET_UPGRADE_DEFINITIONS: Record<SecretUpgradeType, SecretUpgrade\n     cost: 2000,\n     isToggle: false,\n   },\n+\n+  [SecretUpgradeType.FuelMeltTempBonus]: {\n+    name: 'Cryogenic Fuel Casing',\n+    description: 'Increases fuel rod melting temperature by 500°C. Achieved through careful temperature management.',\n+    hint: '???',\n+    cost: 3000,\n+    isToggle: false,\n+  },\n+\n+  [SecretUpgradeType.CoolRunning]: {\n+    name: 'Superconductor Technology',\n+    description: 'Increases fuel rod melting temperature by 1000°C. Mastery of sub-100°C fuel operation.',\n+    hint: '???',\n+    cost: 10000,\n+    isToggle: false,\n+  },\n };\n \n // =============================================================================\n@@ -575,7 +593,7 @@ export const SECRET_UPGRADE_DEFINITIONS: Record<SecretUpgradeType, SecretUpgrade\n // =============================================================================\n \n export interface SecretUnlockCondition {\n-  type: 'meltdown' | 'fill_grid' | 'survive_heat' | 'total_earned' | 'demolish_count';\n+  type: 'meltdown' | 'fill_grid' | 'survive_heat' | 'total_earned' | 'demolish_count' | 'fuel_depleted_cool' | 'fuel_depleted_ice';\n   /** Threshold value for the condition */\n   threshold: number;\n   /** For survive_heat: percentage of max temp (0.9 = 90%) */\n@@ -623,6 +641,16 @@ export const SECRET_UNLOCK_CONDITIONS: Record<SecretUpgradeType, SecretUnlockCon\n     type: 'demolish_count',\n     threshold: 100, // Demolish 100 structures\n   },\n+\n+  [SecretUpgradeType.FuelMeltTempBonus]: {\n+    type: 'fuel_depleted_cool',\n+    threshold: 10, // Deplete 10 fuel rods that never exceeded 200°C\n+  },\n+\n+  [SecretUpgradeType.CoolRunning]: {\n+    type: 'fuel_depleted_ice',\n+    threshold: 10, // Deplete 10 fuel rods that never exceeded 100°C\n+  },\n };\n \n // =============================================================================\n@@ -697,6 +725,8 @@ export function getSecretUnlockProgress(\n     totalMoneyEarned: number;\n     demolishCount: number;\n     ticksAtHighHeat: number;\n+    fuelRodsDepletedCool: number;\n+    fuelRodsDepletedIce: number;\n   }\n ): { current: number; required: number; unlocked: boolean } {\n   const condition = SECRET_UNLOCK_CONDITIONS[upgradeType];\n@@ -718,6 +748,12 @@ export function getSecretUnlockProgress(\n     case 'survive_heat':\n       current = gameStats.ticksAtHighHeat;\n       break;\n+    case 'fuel_depleted_cool':\n+      current = gameStats.fuelRodsDepletedCool;\n+      break;\n+    case 'fuel_depleted_ice':\n+      current = gameStats.fuelRodsDepletedIce;\n+      break;\n   }\n \n   return {\ndiff --git a/src/game/GridManager.ts b/src/game/GridManager.ts\nindex 0e158a8..f445065 100644\n--- a/src/game/GridManager.ts\n+++ b/src/game/GridManager.ts\n@@ -17,6 +17,8 @@ export interface Cell {\n   lifetime: number;\n   /** Whether this is an exotic variant (fuel rods only) */\n   isExotic: boolean;\n+  /** Maximum temperature this cell has reached (fuel rods only, for secret unlocks) */\n+  maxTempReached: number;\n }\n \n export class GridManager {\n@@ -56,6 +58,7 @@ export class GridManager {\n       power: 0,\n       lifetime: 0,\n       isExotic: false,\n+      maxTempReached: 0,\n     };\n   }\n \ndiff --git a/src/game/HeatGame.test.ts b/src/game/HeatGame.test.ts\nindex 6abd6a3..6cd0e6d 100644\n--- a/src/game/HeatGame.test.ts\n+++ b/src/game/HeatGame.test.ts\n@@ -581,8 +581,9 @@ describe('HeatGame', () => {\n \n   describe('serialization', () => {\n     it('should serialize and deserialize game state', () => {\n+      // Use structures that won't melt easily\n       game.build(5, 5, StructureType.FuelRod, Tier.T1);\n-      game.build(6, 5, StructureType.Turbine, Tier.T1);\n+      game.build(6, 5, StructureType.Ventilator, Tier.T1); // Ventilator instead of Turbine\n \n       for (let i = 0; i < 10; i++) {\n         game.tick();\n@@ -594,7 +595,7 @@ describe('HeatGame', () => {\n       expect(restored.getMoney()).toBe(game.getMoney());\n       expect(restored.getTickCount()).toBe(game.getTickCount());\n       expect(restored.getCell(5, 5)?.structure).toBe(StructureType.FuelRod);\n-      expect(restored.getCell(6, 5)?.structure).toBe(StructureType.Turbine);\n+      expect(restored.getCell(6, 5)?.structure).toBe(StructureType.Ventilator);\n     });\n \n     it('should preserve upgrade state', () => {\ndiff --git a/src/game/HeatGame.ts b/src/game/HeatGame.ts\nindex eeca20d..ce415eb 100644\n--- a/src/game/HeatGame.ts\n+++ b/src/game/HeatGame.ts\n@@ -48,6 +48,8 @@ export interface GameStats {\n   manualClicks: number;\n   structuresBuilt: number;\n   fuelRodsDepleted: number;\n+  fuelRodsDepletedCool: number;\n+  fuelRodsDepletedIce: number;\n }\n \n export interface GameState {\n@@ -105,7 +107,8 @@ export class HeatGame {\n     this.upgradeManager = new UpgradeManager();\n     this.physicsEngine = new PhysicsEngine(\n       this.gridManager,\n-      (type: UpgradeType) => this.upgradeManager.getUpgradeLevel(type)\n+      (type: UpgradeType) => this.upgradeManager.getUpgradeLevel(type),\n+      (type: SecretUpgradeType) => this.upgradeManager.isSecretPurchased(type)\n     );\n \n     this.money = initialMoney;\n@@ -126,6 +129,8 @@ export class HeatGame {\n       manualClicks: 0,\n       structuresBuilt: 0,\n       fuelRodsDepleted: 0,\n+      fuelRodsDepletedCool: 0,\n+      fuelRodsDepletedIce: 0,\n     };\n   }\n \n@@ -436,6 +441,8 @@ export class HeatGame {\n       totalMoneyEarned: this.stats.totalMoneyEarned,\n       demolishCount: this.stats.demolishCount,\n       ticksAtHighHeat: this.stats.ticksAtHighHeat,\n+      fuelRodsDepletedCool: this.stats.fuelRodsDepletedCool,\n+      fuelRodsDepletedIce: this.stats.fuelRodsDepletedIce,\n     };\n \n     this.upgradeManager.checkSecretUnlocks(stats);\n@@ -456,6 +463,8 @@ export class HeatGame {\n     this.stats.totalPowerGenerated = physicsStats.totalPowerGenerated;\n     this.stats.ticksAtHighHeat = physicsStats.ticksAtHighHeat;\n     this.stats.fuelRodsDepleted = physicsStats.fuelRodsDepleted;\n+    this.stats.fuelRodsDepletedCool = physicsStats.fuelRodsDepletedCool;\n+    this.stats.fuelRodsDepletedIce = physicsStats.fuelRodsDepletedIce;\n \n     // Add money earned from power sales\n     this.money += result.moneyEarned;\n@@ -502,6 +511,8 @@ export class HeatGame {\n       totalMoneyEarned: state.stats.totalMoneyEarned,\n       fuelRodsDepleted: state.stats.fuelRodsDepleted,\n       ticksAtHighHeat: state.stats.ticksAtHighHeat,\n+      fuelRodsDepletedCool: state.stats.fuelRodsDepletedCool ?? 0,\n+      fuelRodsDepletedIce: state.stats.fuelRodsDepletedIce ?? 0,\n     });\n \n     return game;\ndiff --git a/src/game/PhysicsEngine.test.ts b/src/game/PhysicsEngine.test.ts\nindex b1487d7..0daa6ba 100644\n--- a/src/game/PhysicsEngine.test.ts\n+++ b/src/game/PhysicsEngine.test.ts\n@@ -122,10 +122,17 @@ describe('PhysicsEngine', () => {\n       const substation = grid.getCellRef(5, 7)!;\n       substation.structure = StructureType.Substation;\n \n-      const result = physics.tick();\n-\n-      expect(result.moneyEarned).toBeGreaterThan(0);\n-      expect(result.meltdown).toBe(false);\n+      // Run multiple ticks - turbines only work above 100°C\n+      let totalMoney = 0;\n+      let meltdown = false;\n+      for (let i = 0; i < 50 && totalMoney === 0; i++) {\n+        const result = physics.tick();\n+        totalMoney += result.moneyEarned;\n+        if (result.meltdown) meltdown = true;\n+      }\n+\n+      expect(totalMoney).toBeGreaterThan(0);\n+      expect(meltdown).toBe(false);\n     });\n   });\n \ndiff --git a/src/game/PhysicsEngine.ts b/src/game/PhysicsEngine.ts\nindex ef4c504..8a745c8 100644\n--- a/src/game/PhysicsEngine.ts\n+++ b/src/game/PhysicsEngine.ts\n@@ -14,6 +14,7 @@ import {\n   ECONOMY,\n   UpgradeType,\n   UPGRADE_DEFINITIONS,\n+  SecretUpgradeType,\n   EXOTIC_FUEL,\n   getFuelHeatGeneration,\n } from './BalanceConfig.js';\n@@ -39,6 +40,10 @@ export interface PhysicsStats {\n   totalMoneyEarned: number;\n   fuelRodsDepleted: number;\n   ticksAtHighHeat: number;\n+  /** Fuel rods depleted that never exceeded 200°C */\n+  fuelRodsDepletedCool: number;\n+  /** Fuel rods depleted that never exceeded 100°C */\n+  fuelRodsDepletedIce: number;\n }\n \n /**\n@@ -52,11 +57,14 @@ export class PhysicsEngine {\n     totalMoneyEarned: 0,\n     fuelRodsDepleted: 0,\n     ticksAtHighHeat: 0,\n+    fuelRodsDepletedCool: 0,\n+    fuelRodsDepletedIce: 0,\n   };\n \n   constructor(\n     private gridManager: GridManager,\n-    private getUpgradeLevel: (type: UpgradeType) => number\n+    private getUpgradeLevel: (type: UpgradeType) => number,\n+    private isSecretPurchased: (type: SecretUpgradeType) => boolean = () => false\n   ) {}\n \n   /**\n@@ -101,6 +109,7 @@ export class PhysicsEngine {\n    */\n   getEffectiveMeltTemp(structure: StructureType): number {\n     const baseTemp = STRUCTURE_BASE_STATS[structure].meltTemp;\n+    let effectiveTemp = baseTemp;\n \n     let upgradeType: UpgradeType | null = null;\n     switch (structure) {\n@@ -115,10 +124,20 @@ export class PhysicsEngine {\n     if (upgradeType) {\n       const level = this.getUpgradeLevel(upgradeType);\n       const definition = UPGRADE_DEFINITIONS[upgradeType];\n-      return baseTemp + (level * definition.improvementPerLevel);\n+      effectiveTemp += level * definition.improvementPerLevel;\n     }\n \n-    return baseTemp;\n+    // Apply secret upgrade bonuses for fuel rods\n+    if (structure === StructureType.FuelRod) {\n+      if (this.isSecretPurchased(SecretUpgradeType.FuelMeltTempBonus)) {\n+        effectiveTemp += 500; // +500°C from Cryogenic Fuel Casing\n+      }\n+      if (this.isSecretPurchased(SecretUpgradeType.CoolRunning)) {\n+        effectiveTemp += 1000; // +1000°C from Superconductor Technology\n+      }\n+    }\n+\n+    return effectiveTemp;\n   }\n \n   /**\n@@ -215,6 +234,11 @@ export class PhysicsEngine {\n         }\n \n         cell.heat += heatGeneration;\n+\n+        // Track max temperature for secret unlock tracking\n+        if (cell.heat > cell.maxTempReached) {\n+          cell.maxTempReached = cell.heat;\n+        }\n       }\n     }\n   }\n@@ -237,6 +261,15 @@ export class PhysicsEngine {\n \n         if (cell.lifetime <= 0) {\n           this.stats.fuelRodsDepleted++;\n+\n+          // Track clean depletions for secret unlocks\n+          if (cell.maxTempReached <= 200) {\n+            this.stats.fuelRodsDepletedCool++;\n+          }\n+          if (cell.maxTempReached <= 100) {\n+            this.stats.fuelRodsDepletedIce++;\n+          }\n+\n           this.emitEvent({\n             type: 'fuel_depleted',\n             x,\n@@ -325,13 +358,15 @@ export class PhysicsEngine {\n       for (let x = 0; x < gridSize; x++) {\n         const cell = grid[y][x];\n         if (cell.structure !== StructureType.Turbine) continue;\n-        if (cell.heat <= 0) continue;\n+        if (cell.heat <= 100) continue; // Turbines only work above 100°C\n \n         const baseStats = STRUCTURE_BASE_STATS[StructureType.Turbine];\n         const maxHeatConsumption = baseStats.maxHeatConsumption * Math.pow(10, cell.tier - 1);\n         const powerGeneration = baseStats.powerGeneration;\n \n-        const heatConsumed = Math.min(cell.heat, maxHeatConsumption);\n+        // Only consume heat above 100°C\n+        const heatAbove100 = cell.heat - 100;\n+        const heatConsumed = Math.min(heatAbove100, maxHeatConsumption);\n         const powerGenerated = heatConsumed * powerGeneration;\n \n         cell.heat -= heatConsumed;\ndiff --git a/src/game/UpgradeManager.ts b/src/game/UpgradeManager.ts\nindex 34d4ec4..95cc3fe 100644\n--- a/src/game/UpgradeManager.ts\n+++ b/src/game/UpgradeManager.ts\n@@ -38,6 +38,8 @@ export interface UnlockStats {\n   totalMoneyEarned: number;\n   demolishCount: number;\n   ticksAtHighHeat: number;\n+  fuelRodsDepletedCool: number;\n+  fuelRodsDepletedIce: number;\n }\n \n /**",
+          "actualWorkers": 1
+        },
+        "id": "chromium",
+        "name": "chromium",
+        "testDir": "/home/runner/work/claudetest123/claudetest123/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 30000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "html",
+        {
+          "outputFolder": "playwright-report"
+        }
+      ],
+      [
+        "list",
+        null
+      ],
+      [
+        "json",
+        {
+          "outputFile": "test-results/results.json"
+        }
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "runAgents": "none",
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.58.0",
+    "workers": 1,
+    "webServer": {
+      "command": "npm run serve",
+      "url": "http://localhost:3000",
+      "reuseExistingServer": false,
+      "timeout": 120000
+    }
+  },
+  "suites": [
+    {
+      "title": "heat-game.spec.ts",
+      "file": "heat-game.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Heat Game E2E Tests",
+          "file": "heat-game.spec.ts",
+          "line": 40,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should load the game and display initial state",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 533,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-31T17:51:55.316Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-2428b-e-and-display-initial-state-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-2428b-e-and-display-initial-state-chromium/attachments/browser-logs-252e98eebb6d2a6fd5612fd184955e74f7d8fa0e.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-1f7f90ca45f76c134f4d",
+              "file": "heat-game.spec.ts",
+              "line": 86,
+              "column": 3
+            },
+            {
+              "title": "should place a Fuel Rod on the grid",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 607,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-31T17:51:57.171Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-05fff-lace-a-Fuel-Rod-on-the-grid-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-05fff-lace-a-Fuel-Rod-on-the-grid-chromium/attachments/browser-logs-daa597c1e58cdd3735064670bc098a56f535a7d5.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-a31bde006f3c29450fad",
+              "file": "heat-game.spec.ts",
+              "line": 116,
+              "column": 3
+            },
+            {
+              "title": "should place multiple structures and observe heat dynamics",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1200,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-31T17:51:57.792Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-edba4-s-and-observe-heat-dynamics-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-edba4-s-and-observe-heat-dynamics-chromium/attachments/browser-logs-a9526112523c68aa24fe78334be3ec2af4a1ba62.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-2ed04ebe32d9c471053a",
+              "file": "heat-game.spec.ts",
+              "line": 148,
+              "column": 3
+            },
+            {
+              "title": "should demolish a structure with right-click",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 555,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-31T17:51:59.007Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-53724--structure-with-right-click-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-53724--structure-with-right-click-chromium/attachments/browser-logs-d97b4f4e87a5cc31e1b5dee61d33b7cf6ee7bb2f.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-ff211d87a2ad19067056",
+              "file": "heat-game.spec.ts",
+              "line": 185,
+              "column": 3
+            },
+            {
+              "title": "should build a power generation setup",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1704,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-31T17:51:59.576Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-206ae-ld-a-power-generation-setup-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-206ae-ld-a-power-generation-setup-chromium/attachments/browser-logs-6db27ca250b3a1a4083663dd5a90aeedb0e1a354.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-abe0096aa1a1c45a3b34",
+              "file": "heat-game.spec.ts",
+              "line": 216,
+              "column": 3
+            },
+            {
+              "title": "should show heat buildup with clustered fuel rods",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1589,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-31T17:52:01.292Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-1ce31-up-with-clustered-fuel-rods-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-1ce31-up-with-clustered-fuel-rods-chromium/attachments/browser-logs-4108f70a5376472a80710ba1c287f526e1cfc9b4.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-ac87d21624a439db98b8",
+              "file": "heat-game.spec.ts",
+              "line": 253,
+              "column": 3
+            },
+            {
+              "title": "should not allow building without sufficient money",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1434,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-31T17:52:02.896Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-ee0f6-ng-without-sufficient-money-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-ee0f6-ng-without-sufficient-money-chromium/attachments/browser-logs-67852c21b9cbe344288f7cfb81aa3e88ded21441.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-b096005e15a85f67c2a8",
+              "file": "heat-game.spec.ts",
+              "line": 291,
+              "column": 3
+            },
+            {
+              "title": "should handle rapid clicking on the grid",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1218,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-31T17:52:04.345Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-c664c--rapid-clicking-on-the-grid-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-c664c--rapid-clicking-on-the-grid-chromium/attachments/browser-logs-8830c25d0c901f07d14f24299509ec6ff3fc0a0b.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-1b3f7a34798ed668be9c",
+              "file": "heat-game.spec.ts",
+              "line": 333,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-01-31T17:51:47.959Z",
+    "duration": 17682.292,
+    "expected": 8,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}
