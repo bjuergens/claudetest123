@@ -1,6 +1,10 @@
 import { HeatGame, StructureType } from './game/HeatGame.js';
 import { HeatGameRenderer } from './game/HeatGameRenderer.js';
 import { CELL_SIZE, GRID_PADDING, TICK_INTERVAL } from './constants.js';
+import { BUILD_VERSION } from './version.js';
+
+const SAVE_KEY = 'heat-game-save';
+const AUTOSAVE_INTERVAL = 10; // Save every 10 ticks
 
 // PWA Install Prompt interface (not in standard lib.dom.d.ts)
 interface BeforeInstallPromptEvent extends Event {
@@ -94,6 +98,9 @@ function showReloadBanner(): void {
   // Check if banner already exists
   if (document.getElementById('reload-banner')) return;
 
+  // Hide the update button to avoid duplicate UI
+  hideUpdateButton();
+
   const banner = document.createElement('div');
   banner.id = 'reload-banner';
   banner.style.cssText = `
@@ -184,19 +191,50 @@ window.addEventListener('load', () => {
   }
 });
 
+function loadGame(): HeatGame {
+  try {
+    const saved = localStorage.getItem(SAVE_KEY);
+    if (saved) {
+      console.log('Loading saved game...');
+      return HeatGame.deserialize(saved);
+    }
+  } catch (error) {
+    console.warn('Failed to load save, starting new game:', error);
+  }
+  return new HeatGame(500);
+}
+
+function saveGame(game: HeatGame): void {
+  try {
+    localStorage.setItem(SAVE_KEY, game.serialize());
+  } catch (error) {
+    console.warn('Failed to save game:', error);
+  }
+}
+
+function resetGame(): void {
+  if (confirm('Are you sure you want to reset your save? This cannot be undone.')) {
+    localStorage.removeItem(SAVE_KEY);
+    window.location.reload();
+  }
+}
+
 function initGame(): void {
   if (!canvas) {
     throw new Error('Game canvas element not found');
   }
 
-  const game = new HeatGame(500);
+  const game = loadGame();
   const renderer = new HeatGameRenderer(game, canvas, {
     cellSize: CELL_SIZE,
     gridPadding: GRID_PADDING,
   });
 
   if (gameUI) {
-    renderer.createUI(gameUI);
+    renderer.createUI(gameUI, {
+      onResetSave: resetGame,
+      buildVersion: BUILD_VERSION,
+    });
   }
 
   renderer.onCellClick((x, y, button) => {
@@ -213,6 +251,7 @@ function initGame(): void {
 
   let lastTick = 0;
   let running = true;
+  let ticksSinceLastSave = 0;
 
   function gameLoop(timestamp: number): void {
     if (!running) return;
@@ -221,6 +260,13 @@ function initGame(): void {
       if (timestamp - lastTick >= TICK_INTERVAL) {
         game.tick();
         lastTick = timestamp;
+
+        // Autosave periodically
+        ticksSinceLastSave++;
+        if (ticksSinceLastSave >= AUTOSAVE_INTERVAL) {
+          saveGame(game);
+          ticksSinceLastSave = 0;
+        }
       }
       renderer.render();
       renderer.updateUI();
