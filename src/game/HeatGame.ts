@@ -21,12 +21,13 @@ import {
 } from './BalanceConfig.js';
 
 import { GridManager, Cell } from './GridManager.js';
-import { PhysicsEngine, PhysicsEvent } from './PhysicsEngine.js';
+import { PhysicsEngine, PhysicsEvent, TickHeatBalance } from './PhysicsEngine.js';
 import { UpgradeManager, UpgradeEvent } from './UpgradeManager.js';
 
 // Re-export types for backward compatibility
 export { StructureType, Tier, UpgradeType, SecretUpgradeType };
 export { Cell };
+export { TickHeatBalance };
 
 export interface UpgradeState {
   levels: Record<UpgradeType, number>;
@@ -100,6 +101,7 @@ export class HeatGame {
   private money: number;
   private stats: GameStats;
   private eventListeners: GameEventListener[] = [];
+  private lastTickHeatBalance: TickHeatBalance | null = null;
 
   constructor(initialMoney: number = CORE_SETTINGS.STARTING_MONEY) {
     // Initialize composed components
@@ -259,6 +261,14 @@ export class HeatGame {
 
   getFilledCellCount(): number {
     return this.gridManager.getFilledCellCount();
+  }
+
+  /**
+   * Get the heat balance statistics from the last tick
+   * Returns null if no tick has been executed yet
+   */
+  getLastTickHeatBalance(): TickHeatBalance | null {
+    return this.lastTickHeatBalance ? { ...this.lastTickHeatBalance } : null;
   }
 
   // ==========================================================================
@@ -457,6 +467,9 @@ export class HeatGame {
 
     // Run physics simulation
     const result = this.physicsEngine.tick();
+
+    // Store heat balance for UI access
+    this.lastTickHeatBalance = result.heatBalance;
 
     // Sync stats from physics engine (single source of truth for physics-related stats)
     const physicsStats = this.physicsEngine.getStats();
