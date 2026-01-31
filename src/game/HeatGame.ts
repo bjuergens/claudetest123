@@ -24,7 +24,6 @@ import {
   UPGRADE_DEFINITIONS,
   SecretUpgradeType,
   SECRET_UPGRADE_DEFINITIONS,
-  SECRET_UNLOCK_CONDITIONS,
   EXOTIC_FUEL,
   getStructureCost,
   getFuelLifetime,

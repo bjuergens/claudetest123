@@ -46,12 +46,6 @@ export const MANUAL_GENERATION = {
   /** Base money per click */
   BASE_MONEY_PER_CLICK: 1,
 
-  /** Upgrade cost multiplier per level */
-  UPGRADE_COST_MULTIPLIER: 2.0,
-
-  /** Base cost for first upgrade */
-  UPGRADE_BASE_COST: 50,
-
   /** Money increase per upgrade level (additive) */
   MONEY_PER_LEVEL: 1,
 };
@@ -66,22 +60,6 @@ export enum Tier {
   T3 = 3,
   T4 = 4,
 }
-
-/** Cost multiplier per tier (T1 = 1x, T2 = 100x, T3 = 10000x, etc.) */
-export const TIER_COST_MULTIPLIER: Record<Tier, number> = {
-  [Tier.T1]: 1,
-  [Tier.T2]: 100,
-  [Tier.T3]: 10_000,
-  [Tier.T4]: 1_000_000,
-};
-
-/** Efficiency multiplier per tier (T1 = 1x, T2 = 10x, T3 = 100x, etc.) */
-export const TIER_EFFICIENCY_MULTIPLIER: Record<Tier, number> = {
-  [Tier.T1]: 1,
-  [Tier.T2]: 10,
-  [Tier.T3]: 100,
-  [Tier.T4]: 1000,
-};
 
 // =============================================================================
 // STRUCTURE BASE STATS (Tier 1)
@@ -602,8 +580,6 @@ export interface SecretUnlockCondition {
   threshold: number;
   /** For survive_heat: percentage of max temp (0.9 = 90%) */
   heatPercentage?: number;
-  /** For survive_heat: number of ticks to survive */
-  survivalTicks?: number;
 }
 
 export const SECRET_UNLOCK_CONDITIONS: Record<SecretUpgradeType, SecretUnlockCondition> = {
@@ -634,9 +610,8 @@ export const SECRET_UNLOCK_CONDITIONS: Record<SecretUpgradeType, SecretUnlockCon
 
   [SecretUpgradeType.VoidCellUnlock]: {
     type: 'survive_heat',
-    threshold: 100, // 100 ticks
-    heatPercentage: 0.9, // 90% of max heat
-    survivalTicks: 100,
+    threshold: 100, // 100 ticks at 90% max heat
+    heatPercentage: 0.9,
   },
 
   [SecretUpgradeType.Overclock]: {
