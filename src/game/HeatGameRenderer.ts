@@ -6,10 +6,11 @@ import {
   HeatGame,
   Cell,
   StructureType,
-  STRUCTURE_STATS,
+  Tier,
   GRID_SIZE,
   GameEvent,
 } from './HeatGame.js';
+import { STRUCTURE_BASE_STATS, getStructureCost } from './BalanceConfig.js';
 
 export interface RenderConfig {
   cellSize: number;
@@ -31,10 +32,10 @@ const STRUCTURE_COLORS: Record<StructureType, string> = {
   [StructureType.FuelRod]: '#ff6b00',
   [StructureType.Ventilator]: '#00aaff',
   [StructureType.HeatExchanger]: '#ffaa00',
-  [StructureType.Battery]: '#00ff88',
-  [StructureType.InsulationPlate]: '#888888',
+  [StructureType.Insulator]: '#888888',
   [StructureType.Turbine]: '#aa00ff',
   [StructureType.Substation]: '#ffff00',
+  [StructureType.VoidCell]: '#000066',
 };
 
 // Structure symbols for simple rendering
@@ -43,10 +44,10 @@ const STRUCTURE_SYMBOLS: Record<StructureType, string> = {
   [StructureType.FuelRod]: 'F',
   [StructureType.Ventilator]: 'V',
   [StructureType.HeatExchanger]: 'X',
-  [StructureType.Battery]: 'B',
-  [StructureType.InsulationPlate]: 'I',
+  [StructureType.Insulator]: 'I',
   [StructureType.Turbine]: 'T',
   [StructureType.Substation]: 'S',
+  [StructureType.VoidCell]: '⚫',
 };
 
 export type CellClickHandler = (x: number, y: number, button: number) => void;
@@ -57,6 +58,7 @@ export class HeatGameRenderer {
   private ctx: CanvasRenderingContext2D;
   private config: RenderConfig;
   private selectedStructure: StructureType = StructureType.FuelRod;
+  private selectedTier: Tier = Tier.T1;
   private cellClickHandler: CellClickHandler | null = null;
 
   // UI elements
@@ -82,7 +84,8 @@ export class HeatGameRenderer {
   }
 
   private setupCanvas(): void {
-    const totalSize = GRID_SIZE * this.config.cellSize + this.config.gridPadding * 2;
+    const gridSize = this.game.getGridSize();
+    const totalSize = gridSize * this.config.cellSize + this.config.gridPadding * 2;
     this.canvas.width = totalSize;
     this.canvas.height = totalSize;
     this.canvas.style.cursor = 'pointer';
@@ -98,6 +101,8 @@ export class HeatGameRenderer {
     this.game.addEventListener((event: GameEvent) => {
       if (event.type === 'meltdown') {
         this.showMeltdownAnimation();
+      } else if (event.type === 'grid_expanded') {
+        this.setupCanvas();
       }
     });
   }
@@ -107,10 +112,11 @@ export class HeatGameRenderer {
     const canvasX = clientX - rect.left - this.config.gridPadding;
     const canvasY = clientY - rect.top - this.config.gridPadding;
 
+    const gridSize = this.game.getGridSize();
     const cellX = Math.floor(canvasX / this.config.cellSize);
     const cellY = Math.floor(canvasY / this.config.cellSize);
 
-    if (cellX >= 0 && cellX < GRID_SIZE && cellY >= 0 && cellY < GRID_SIZE) {
+    if (cellX >= 0 && cellX < gridSize && cellY >= 0 && cellY < gridSize) {
       return { x: cellX, y: cellY };
     }
     return null;
@@ -143,12 +149,20 @@ export class HeatGameRenderer {
     const cell = this.game.getCell(x, y);
     if (!cell) return '';
 
-    const stats = STRUCTURE_STATS[cell.structure];
+    const stats = STRUCTURE_BASE_STATS[cell.structure];
     const lines = [
       `Position: (${x}, ${y})`,
-      `Structure: ${cell.structure}`,
-      `Heat: ${cell.heat.toFixed(1)} / ${stats.maxHeat}`,
+      `Structure: ${stats.name}`,
+      `Tier: T${cell.tier}`,
+      `Heat: ${cell.heat.toFixed(1)}°C / ${stats.meltTemp}°C`,
     ];
+
+    if (cell.structure === StructureType.FuelRod) {
+      lines.push(`Lifetime: ${cell.lifetime} ticks`);
+      if (cell.isExotic) {
+        lines.push('(Exotic)');
+      }
+    }
 
     if (cell.power > 0) {
       lines.push(`Power: ${cell.power.toFixed(2)}`);
@@ -168,6 +182,14 @@ export class HeatGameRenderer {
 
   getSelectedStructure(): StructureType {
     return this.selectedStructure;
+  }
+
+  setSelectedTier(tier: Tier): void {
+    this.selectedTier = tier;
+  }
+
+  getSelectedTier(): Tier {
+    return this.selectedTier;
   }
 
   // Main render method
@@ -192,23 +214,24 @@ export class HeatGameRenderer {
     if (!this.config.showGrid) return;
 
     const { cellSize, gridPadding } = this.config;
+    const gridSize = this.game.getGridSize();
 
     this.ctx.strokeStyle = '#333333';
     this.ctx.lineWidth = 1;
 
     // Vertical lines
-    for (let x = 0; x <= GRID_SIZE; x++) {
+    for (let x = 0; x <= gridSize; x++) {
       this.ctx.beginPath();
       this.ctx.moveTo(gridPadding + x * cellSize, gridPadding);
-      this.ctx.lineTo(gridPadding + x * cellSize, gridPadding + GRID_SIZE * cellSize);
+      this.ctx.lineTo(gridPadding + x * cellSize, gridPadding + gridSize * cellSize);
       this.ctx.stroke();
     }
 
     // Horizontal lines
-    for (let y = 0; y <= GRID_SIZE; y++) {
+    for (let y = 0; y <= gridSize; y++) {
       this.ctx.beginPath();
       this.ctx.moveTo(gridPadding, gridPadding + y * cellSize);
-      this.ctx.lineTo(gridPadding + GRID_SIZE * cellSize, gridPadding + y * cellSize);
+      this.ctx.lineTo(gridPadding + gridSize * cellSize, gridPadding + y * cellSize);
       this.ctx.stroke();
     }
   }
@@ -216,9 +239,10 @@ export class HeatGameRenderer {
   private renderStructures(): void {
     const { cellSize, gridPadding } = this.config;
     const grid = this.game.getGridSnapshot();
+    const gridSize = this.game.getGridSize();
 
-    for (let y = 0; y < GRID_SIZE; y++) {
-      for (let x = 0; x < GRID_SIZE; x++) {
+    for (let y = 0; y < gridSize; y++) {
+      for (let x = 0; x < gridSize; x++) {
         const cell = grid[y][x];
         if (cell.structure === StructureType.Empty) continue;
 
@@ -228,6 +252,15 @@ export class HeatGameRenderer {
         // Draw structure background
         this.ctx.fillStyle = STRUCTURE_COLORS[cell.structure];
         this.ctx.fillRect(drawX + 2, drawY + 2, cellSize - 4, cellSize - 4);
+
+        // Draw tier indicator for T2+
+        if (cell.tier > Tier.T1) {
+          this.ctx.fillStyle = '#ffffff';
+          this.ctx.font = `${cellSize * 0.25}px monospace`;
+          this.ctx.textAlign = 'right';
+          this.ctx.textBaseline = 'top';
+          this.ctx.fillText(`T${cell.tier}`, drawX + cellSize - 4, drawY + 4);
+        }
 
         // Draw structure symbol
         this.ctx.fillStyle = '#ffffff';
@@ -239,6 +272,14 @@ export class HeatGameRenderer {
           drawX + cellSize / 2,
           drawY + cellSize / 2
         );
+
+        // Draw depleted indicator for fuel rods
+        if (cell.structure === StructureType.FuelRod && cell.lifetime <= 0) {
+          this.ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+          this.ctx.fillRect(drawX + 2, drawY + 2, cellSize - 4, cellSize - 4);
+          this.ctx.fillStyle = '#666666';
+          this.ctx.fillText('⌛', drawX + cellSize / 2, drawY + cellSize / 2);
+        }
       }
     }
   }
@@ -246,14 +287,15 @@ export class HeatGameRenderer {
   private renderHeatOverlay(): void {
     const { cellSize, gridPadding } = this.config;
     const grid = this.game.getGridSnapshot();
+    const gridSize = this.game.getGridSize();
 
-    for (let y = 0; y < GRID_SIZE; y++) {
-      for (let x = 0; x < GRID_SIZE; x++) {
+    for (let y = 0; y < gridSize; y++) {
+      for (let x = 0; x < gridSize; x++) {
         const cell = grid[y][x];
         if (cell.heat <= 0) continue;
 
-        const stats = STRUCTURE_STATS[cell.structure];
-        const heatRatio = Math.min(cell.heat / stats.maxHeat, 1);
+        const stats = STRUCTURE_BASE_STATS[cell.structure];
+        const heatRatio = Math.min(cell.heat / stats.meltTemp, 1);
 
         const drawX = gridPadding + x * cellSize;
         const drawY = gridPadding + y * cellSize;
@@ -282,7 +324,7 @@ export class HeatGameRenderer {
     const money = this.game.getMoney();
     const meltdowns = this.game.getMeltdownCount();
 
-    this.ctx.fillText(`Money: ${money.toFixed(0)}`, 5, 5);
+    this.ctx.fillText(`Money: €${money.toFixed(0)}`, 5, 5);
     this.ctx.fillText(`Meltdowns: ${meltdowns}`, 5, 22);
   }
 
@@ -314,15 +356,16 @@ export class HeatGameRenderer {
       StructureType.FuelRod,
       StructureType.Ventilator,
       StructureType.HeatExchanger,
-      StructureType.Battery,
-      StructureType.InsulationPlate,
+      StructureType.Insulator,
       StructureType.Turbine,
       StructureType.Substation,
     ];
 
     for (const structure of buildableStructures) {
+      const stats = STRUCTURE_BASE_STATS[structure];
+      const cost = getStructureCost(structure, Tier.T1);
       const button = document.createElement('button');
-      button.textContent = `${STRUCTURE_SYMBOLS[structure]} ${structure} ($${STRUCTURE_STATS[structure].cost})`;
+      button.textContent = `${STRUCTURE_SYMBOLS[structure]} ${stats.name} (€${cost})`;
       button.addEventListener('click', () => {
         this.setSelectedStructure(structure);
         this.updateBuildMenuSelection();
@@ -344,15 +387,17 @@ export class HeatGameRenderer {
 
   updateUI(): void {
     if (this.moneyDisplay) {
-      this.moneyDisplay.textContent = `Money: $${this.game.getMoney().toFixed(0)}`;
+      this.moneyDisplay.textContent = `Money: €${this.game.getMoney().toFixed(0)}`;
     }
 
     if (this.statsDisplay) {
+      const stats = this.game.getStats();
       this.statsDisplay.innerHTML = `
         <div>Total Power: ${this.game.getTotalPowerGenerated().toFixed(1)}</div>
-        <div>Total Earned: $${this.game.getTotalMoneyEarned().toFixed(0)}</div>
-        <div>Meltdowns: ${this.game.getMeltdownCount()}</div>
-        <div>Ticks: ${this.game.getTickCount()}</div>
+        <div>Total Earned: €${this.game.getTotalMoneyEarned().toFixed(0)}</div>
+        <div>Meltdowns: ${stats.meltdownCount}</div>
+        <div>Ticks: ${stats.tickCount}</div>
+        <div>Clicks: ${stats.manualClicks}</div>
       `;
     }
   }
