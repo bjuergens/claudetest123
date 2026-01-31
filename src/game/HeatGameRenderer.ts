@@ -9,8 +9,73 @@ import {
   Tier,
   GRID_SIZE,
   GameEvent,
+  CellPerformance,
+  TickHeatBalance,
 } from './HeatGame.js';
 import { STRUCTURE_BASE_STATS, getStructureCost } from './BalanceConfig.js';
+
+/**
+ * HSV to RGB conversion
+ * h: 0-360, s: 0-1, v: 0-1
+ * Returns rgb string like 'rgb(r, g, b)'
+ */
+function hsvToRgb(h: number, s: number, v: number): string {
+  h = h % 360;
+  const c = v * s;
+  const x = c * (1 - Math.abs((h / 60) % 2 - 1));
+  const m = v - c;
+  let r = 0, g = 0, b = 0;
+
+  if (h < 60) { r = c; g = x; b = 0; }
+  else if (h < 120) { r = x; g = c; b = 0; }
+  else if (h < 180) { r = 0; g = c; b = x; }
+  else if (h < 240) { r = 0; g = x; b = c; }
+  else if (h < 300) { r = x; g = 0; b = c; }
+  else { r = c; g = 0; b = x; }
+
+  return `rgb(${Math.round((r + m) * 255)}, ${Math.round((g + m) * 255)}, ${Math.round((b + m) * 255)})`;
+}
+
+/**
+ * Structure type to hue mapping
+ * Each structure type gets a distinct hue
+ */
+const STRUCTURE_HUES: Record<StructureType, number> = {
+  [StructureType.Empty]: 0,       // N/A
+  [StructureType.FuelRod]: 25,    // Orange
+  [StructureType.Ventilator]: 200, // Cyan
+  [StructureType.HeatExchanger]: 40, // Gold
+  [StructureType.Insulator]: 0,   // Gray (low saturation)
+  [StructureType.Turbine]: 280,   // Purple
+  [StructureType.Substation]: 60, // Yellow
+  [StructureType.VoidCell]: 230,  // Dark blue
+};
+
+/**
+ * Get HSV-based color for a structure based on type and tier
+ */
+function getStructureHsvColor(structure: StructureType, tier: Tier): string {
+  if (structure === StructureType.Empty) {
+    return '#2a2a2a';
+  }
+
+  const hue = STRUCTURE_HUES[structure];
+  // Saturation increases with tier: T1=0.5, T2=0.6, T3=0.7, T4=0.8
+  const saturation = structure === StructureType.Insulator ? 0.1 : 0.5 + (tier - 1) * 0.1;
+  // Value is constant at 0.7 for good visibility
+  const value = 0.7;
+
+  return hsvToRgb(hue, saturation, value);
+}
+
+/**
+ * Sigmoid-like function for heat exchange visualization
+ * Uses tanh to map values to -1 to 1 range with good sensitivity near 0
+ * Scale factor determines sensitivity (higher = more sensitive to small values)
+ */
+function heatExchangeSigmoid(value: number, scale: number = 0.05): number {
+  return Math.tanh(value * scale);
+}
 
 export interface RenderConfig {
   cellSize: number;
@@ -241,6 +306,11 @@ export class HeatGameRenderer {
     const grid = this.game.getGridSnapshot();
     const gridSize = this.game.getGridSize();
 
+    // Bar dimensions
+    const barWidth = Math.max(3, cellSize * 0.12);  // Right temperature bar width
+    const barHeight = Math.max(2, cellSize * 0.08); // Top/bottom bar height
+    const barPadding = 2;
+
     for (let y = 0; y < gridSize; y++) {
       for (let x = 0; x < gridSize; x++) {
         const cell = grid[y][x];
@@ -249,27 +319,39 @@ export class HeatGameRenderer {
         const drawX = gridPadding + x * cellSize;
         const drawY = gridPadding + y * cellSize;
 
-        // Draw structure background
-        this.ctx.fillStyle = STRUCTURE_COLORS[cell.structure];
+        // Draw structure background with HSV color based on type and tier
+        this.ctx.fillStyle = getStructureHsvColor(cell.structure, cell.tier);
         this.ctx.fillRect(drawX + 2, drawY + 2, cellSize - 4, cellSize - 4);
+
+        // Get cell performance data
+        const perf = this.game.getCellPerformance(x, y);
+
+        // Draw top bar (lifetime for fuel, performance for turbine/substation)
+        this.renderTopBar(cell, perf, drawX, drawY, cellSize, barHeight, barPadding);
+
+        // Draw right temperature bar (thermometer)
+        this.renderTempBar(cell, drawX, drawY, cellSize, barWidth, barPadding);
+
+        // Draw bottom heat exchange bar
+        this.renderHeatExchangeBar(perf, drawX, drawY, cellSize, barHeight, barPadding);
 
         // Draw tier indicator for T2+
         if (cell.tier > Tier.T1) {
           this.ctx.fillStyle = '#ffffff';
-          this.ctx.font = `${cellSize * 0.25}px monospace`;
-          this.ctx.textAlign = 'right';
+          this.ctx.font = `${cellSize * 0.22}px monospace`;
+          this.ctx.textAlign = 'left';
           this.ctx.textBaseline = 'top';
-          this.ctx.fillText(`T${cell.tier}`, drawX + cellSize - 4, drawY + 4);
+          this.ctx.fillText(`T${cell.tier}`, drawX + 4, drawY + barHeight + barPadding + 2);
         }
 
-        // Draw structure symbol
+        // Draw structure symbol (slightly offset up to make room for bottom bar)
         this.ctx.fillStyle = '#ffffff';
-        this.ctx.font = `bold ${cellSize * 0.5}px monospace`;
+        this.ctx.font = `bold ${cellSize * 0.4}px monospace`;
         this.ctx.textAlign = 'center';
         this.ctx.textBaseline = 'middle';
         this.ctx.fillText(
           STRUCTURE_SYMBOLS[cell.structure],
-          drawX + cellSize / 2,
+          drawX + cellSize / 2 - barWidth / 2,
           drawY + cellSize / 2
         );
 
@@ -278,10 +360,150 @@ export class HeatGameRenderer {
           this.ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
           this.ctx.fillRect(drawX + 2, drawY + 2, cellSize - 4, cellSize - 4);
           this.ctx.fillStyle = '#666666';
+          this.ctx.font = `bold ${cellSize * 0.4}px monospace`;
           this.ctx.fillText('⌛', drawX + cellSize / 2, drawY + cellSize / 2);
         }
       }
     }
+  }
+
+  /**
+   * Render top bar showing lifetime (fuel) or performance (turbine/substation)
+   */
+  private renderTopBar(
+    cell: Cell,
+    perf: CellPerformance | null,
+    drawX: number,
+    drawY: number,
+    cellSize: number,
+    barHeight: number,
+    barPadding: number
+  ): void {
+    const barX = drawX + barPadding + 2;
+    const barY = drawY + barPadding + 2;
+    const barWidth = cellSize - barPadding * 2 - 4;
+
+    // Background
+    this.ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+    this.ctx.fillRect(barX, barY, barWidth, barHeight);
+
+    let fillRatio = 0;
+    let fillColor = '#00ff00';
+
+    if (cell.structure === StructureType.FuelRod && cell.lifetime > 0 && perf) {
+      // Fuel rod: show lifetime remaining
+      const maxLifetime = perf.initialLifetime > 0 ? perf.initialLifetime : 1;
+      fillRatio = cell.lifetime / maxLifetime;
+      // Color gradient from green (full) to red (depleted)
+      fillColor = fillRatio > 0.5 ? '#00ff00' : fillRatio > 0.25 ? '#ffff00' : '#ff6600';
+    } else if (cell.structure === StructureType.Turbine && perf) {
+      // Turbine: show power generation performance
+      const baseStats = STRUCTURE_BASE_STATS[StructureType.Turbine];
+      const maxHeatConsumption = baseStats.maxHeatConsumption * Math.pow(10, cell.tier - 1);
+      const maxPower = maxHeatConsumption * baseStats.powerGeneration;
+      fillRatio = maxPower > 0 ? perf.powerGenerated / maxPower : 0;
+      fillColor = '#aa00ff'; // Purple for turbine
+    } else if (cell.structure === StructureType.Substation && perf) {
+      // Substation: show power sold vs max sale rate
+      const maxSaleRate = this.game.getEffectivePowerSaleRate(cell.x, cell.y);
+      fillRatio = maxSaleRate > 0 ? perf.powerSold / maxSaleRate : 0;
+      fillColor = '#ffff00'; // Yellow for substation
+    }
+
+    // Fill bar
+    if (fillRatio > 0) {
+      this.ctx.fillStyle = fillColor;
+      this.ctx.fillRect(barX, barY, barWidth * Math.min(fillRatio, 1), barHeight);
+    }
+  }
+
+  /**
+   * Render right temperature bar (thermometer style)
+   */
+  private renderTempBar(
+    cell: Cell,
+    drawX: number,
+    drawY: number,
+    cellSize: number,
+    barWidth: number,
+    barPadding: number
+  ): void {
+    const barX = drawX + cellSize - barPadding - barWidth - 2;
+    const barY = drawY + barPadding + 2;
+    const barHeight = cellSize - barPadding * 2 - 4;
+
+    // Background
+    this.ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+    this.ctx.fillRect(barX, barY, barWidth, barHeight);
+
+    // Get effective melt temperature
+    const meltTemp = this.game.getEffectiveMeltTemp(cell.structure);
+    const tempRatio = meltTemp === Infinity ? 0 : Math.min(cell.heat / meltTemp, 1);
+
+    if (tempRatio > 0) {
+      // Temperature fills from bottom to top
+      const fillHeight = barHeight * tempRatio;
+      const fillY = barY + barHeight - fillHeight;
+
+      // Color gradient from blue (cold) to red (hot)
+      let tempColor: string;
+      if (tempRatio < 0.3) {
+        tempColor = '#0088ff'; // Blue
+      } else if (tempRatio < 0.5) {
+        tempColor = '#00ff88'; // Cyan-green
+      } else if (tempRatio < 0.7) {
+        tempColor = '#ffff00'; // Yellow
+      } else if (tempRatio < 0.9) {
+        tempColor = '#ff8800'; // Orange
+      } else {
+        tempColor = '#ff0000'; // Red
+      }
+
+      this.ctx.fillStyle = tempColor;
+      this.ctx.fillRect(barX, fillY, barWidth, fillHeight);
+    }
+  }
+
+  /**
+   * Render bottom heat exchange bar with tanh scaling
+   */
+  private renderHeatExchangeBar(
+    perf: CellPerformance | null,
+    drawX: number,
+    drawY: number,
+    cellSize: number,
+    barHeight: number,
+    barPadding: number
+  ): void {
+    const barX = drawX + barPadding + 2;
+    const barY = drawY + cellSize - barPadding - barHeight - 2;
+    const barWidth = cellSize - barPadding * 2 - 4;
+
+    // Background
+    this.ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+    this.ctx.fillRect(barX, barY, barWidth, barHeight);
+
+    if (!perf) return;
+
+    // Apply tanh scaling to heat exchange
+    const scaledExchange = heatExchangeSigmoid(perf.heatExchange, 0.05);
+    const centerX = barX + barWidth / 2;
+
+    if (scaledExchange > 0.01) {
+      // Heat gained (positive) - draw from center to right in orange/red
+      const fillWidth = (barWidth / 2) * scaledExchange;
+      this.ctx.fillStyle = scaledExchange > 0.5 ? '#ff4400' : '#ff8800';
+      this.ctx.fillRect(centerX, barY, fillWidth, barHeight);
+    } else if (scaledExchange < -0.01) {
+      // Heat lost (negative) - draw from center to left in blue
+      const fillWidth = (barWidth / 2) * Math.abs(scaledExchange);
+      this.ctx.fillStyle = scaledExchange < -0.5 ? '#0044ff' : '#0088ff';
+      this.ctx.fillRect(centerX - fillWidth, barY, fillWidth, barHeight);
+    }
+
+    // Draw center line marker
+    this.ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+    this.ctx.fillRect(centerX - 0.5, barY, 1, barHeight);
   }
 
   private renderHeatOverlay(): void {
@@ -392,12 +614,30 @@ export class HeatGameRenderer {
 
     if (this.statsDisplay) {
       const stats = this.game.getStats();
+      const heatBalance = this.game.getLastTickHeatBalance();
+
+      let heatBalanceHtml = '';
+      if (heatBalance) {
+        heatBalanceHtml = `
+          <div class="heat-balance-section">
+            <div class="heat-balance-title">Heat Balance</div>
+            <div>Generated: +${heatBalance.heatGenerated.toFixed(1)}</div>
+            <div>Ventilated: -${heatBalance.heatVentilated.toFixed(1)}</div>
+            <div>To Power: -${heatBalance.heatConvertedToPower.toFixed(1)}</div>
+            <div>To Env: -${heatBalance.heatLostToEnvironment.toFixed(1)}</div>
+            <div>Net Change: ${heatBalance.heatDeltaInGrid >= 0 ? '+' : ''}${heatBalance.heatDeltaInGrid.toFixed(1)}</div>
+            <div>Power Sold: ${heatBalance.powerSold.toFixed(2)}</div>
+          </div>
+        `;
+      }
+
       this.statsDisplay.innerHTML = `
         <div>Total Power: ${this.game.getTotalPowerGenerated().toFixed(1)}</div>
         <div>Total Earned: €${this.game.getTotalMoneyEarned().toFixed(0)}</div>
         <div>Meltdowns: ${stats.meltdownCount}</div>
         <div>Ticks: ${stats.tickCount}</div>
         <div>Clicks: ${stats.manualClicks}</div>
+        ${heatBalanceHtml}
       `;
     }
   }

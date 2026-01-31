@@ -21,13 +21,14 @@ import {
 } from './BalanceConfig.js';
 
 import { GridManager, Cell } from './GridManager.js';
-import { PhysicsEngine, PhysicsEvent, TickHeatBalance } from './PhysicsEngine.js';
+import { PhysicsEngine, PhysicsEvent, TickHeatBalance, CellPerformance } from './PhysicsEngine.js';
 import { UpgradeManager, UpgradeEvent } from './UpgradeManager.js';
 
 // Re-export types for backward compatibility
 export { StructureType, Tier, UpgradeType, SecretUpgradeType };
 export { Cell };
 export { TickHeatBalance };
+export { CellPerformance };
 
 export interface UpgradeState {
   levels: Record<UpgradeType, number>;
@@ -269,6 +270,30 @@ export class HeatGame {
    */
   getLastTickHeatBalance(): TickHeatBalance | null {
     return this.lastTickHeatBalance ? { ...this.lastTickHeatBalance } : null;
+  }
+
+  /**
+   * Get cell performance data for a specific cell
+   * Returns null if no tick has been executed yet or cell is invalid
+   */
+  getCellPerformance(x: number, y: number): CellPerformance | null {
+    return this.physicsEngine.getCellPerformance(x, y);
+  }
+
+  /**
+   * Get the effective melt temperature for a structure type (with upgrades)
+   */
+  getEffectiveMeltTemp(structure: StructureType): number {
+    return this.physicsEngine.getEffectiveMeltTemp(structure);
+  }
+
+  /**
+   * Get effective power sale rate for a cell (with upgrades)
+   */
+  getEffectivePowerSaleRate(x: number, y: number): number {
+    const cell = this.gridManager.getCellRef(x, y);
+    if (!cell) return 0;
+    return this.physicsEngine.getEffectivePowerSaleRate(cell);
   }
 
   // ==========================================================================

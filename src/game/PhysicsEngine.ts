@@ -47,6 +47,20 @@ export interface PhysicsStats {
 }
 
 /**
+ * Per-cell performance data for UI display
+ */
+export interface CellPerformance {
+  /** Net heat exchange with neighbors (positive = gained heat, negative = lost heat) */
+  heatExchange: number;
+  /** For turbines: power generated this tick */
+  powerGenerated: number;
+  /** For substations: power sold this tick */
+  powerSold: number;
+  /** For fuel rods: initial lifetime when placed */
+  initialLifetime: number;
+}
+
+/**
  * Per-tick heat balance statistics for debugging/display
  * Conservation law: heatGenerated = heatVentilated + heatConvertedToPower + heatLostToEnvironment + heatDeltaInGrid
  */
@@ -85,12 +99,72 @@ export class PhysicsEngine {
     fuelRodsDepletedCool: 0,
     fuelRodsDepletedIce: 0,
   };
+  /** Per-cell performance data, updated each tick */
+  private cellPerformance: Map<string, CellPerformance> = new Map();
 
   constructor(
     private gridManager: GridManager,
     private getUpgradeLevel: (type: UpgradeType) => number,
     private isSecretPurchased: (type: SecretUpgradeType) => boolean = () => false
   ) {}
+
+  /**
+   * Get cell performance key
+   */
+  private getCellKey(x: number, y: number): string {
+    return `${x},${y}`;
+  }
+
+  /**
+   * Get performance data for a cell
+   */
+  getCellPerformance(x: number, y: number): CellPerformance | null {
+    return this.cellPerformance.get(this.getCellKey(x, y)) ?? null;
+  }
+
+  /**
+   * Initialize cell performance data for all cells
+   */
+  private initCellPerformance(): void {
+    this.cellPerformance.clear();
+    const gridSize = this.gridManager.getSize();
+    for (let y = 0; y < gridSize; y++) {
+      for (let x = 0; x < gridSize; x++) {
+        this.cellPerformance.set(this.getCellKey(x, y), {
+          heatExchange: 0,
+          powerGenerated: 0,
+          powerSold: 0,
+          initialLifetime: 0,
+        });
+      }
+    }
+  }
+
+  /**
+   * Track initial fuel lifetime for fuel rods (for UI progress bars)
+   */
+  private trackInitialFuelLifetime(): void {
+    const grid = this.gridManager.getGridRef();
+    const gridSize = this.gridManager.getSize();
+
+    for (let y = 0; y < gridSize; y++) {
+      for (let x = 0; x < gridSize; x++) {
+        const cell = grid[y][x];
+        if (cell.structure === StructureType.FuelRod && cell.lifetime > 0) {
+          const perf = this.cellPerformance.get(this.getCellKey(x, y));
+          if (perf) {
+            // Calculate initial lifetime based on tier and upgrades
+            // This is used for showing the lifetime progress bar
+            const upgradeLevel = this.getUpgradeLevel(UpgradeType.FuelLifetime);
+            const baseLifetime = STRUCTURE_BASE_STATS[StructureType.FuelRod].baseLifetime;
+            const tierLifetime = baseLifetime * Math.pow(10, cell.tier - 1);
+            const upgradeBonus = upgradeLevel * UPGRADE_DEFINITIONS[UpgradeType.FuelLifetime].improvementPerLevel;
+            perf.initialLifetime = tierLifetime + upgradeBonus;
+          }
+        }
+      }
+    }
+  }
 
   /**
    * Add an event listener for physics events
@@ -356,10 +430,15 @@ export class PhysicsEngine {
       }
     }
 
-    // Apply deltas
+    // Apply deltas and track per-cell heat exchange
     for (let y = 0; y < gridSize; y++) {
       for (let x = 0; x < gridSize; x++) {
         grid[y][x].heat = Math.max(0, grid[y][x].heat + heatDeltas[y][x]);
+        // Update cell performance with heat exchange
+        const perf = this.cellPerformance.get(this.getCellKey(x, y));
+        if (perf) {
+          perf.heatExchange = heatDeltas[y][x];
+        }
       }
     }
 
@@ -417,6 +496,12 @@ export class PhysicsEngine {
         cell.power += powerGenerated;
         this.stats.totalPowerGenerated += powerGenerated;
         totalHeatConvertedToPower += heatConsumed;
+
+        // Track per-turbine power generated
+        const perf = this.cellPerformance.get(this.getCellKey(x, y));
+        if (perf) {
+          perf.powerGenerated = powerGenerated;
+        }
       }
     }
 
@@ -459,6 +544,12 @@ export class PhysicsEngine {
           totalPowerSold += powerToSell;
           this.stats.totalMoneyEarned += earnings;
           cell.power -= powerToSell;
+
+          // Track per-substation power sold
+          const perf = this.cellPerformance.get(this.getCellKey(x, y));
+          if (perf) {
+            perf.powerSold = powerToSell;
+          }
 
           if (earnings > 0) {
             this.emitEvent({
@@ -570,6 +661,12 @@ export class PhysicsEngine {
    * Returns the money earned, meltdown status, and heat balance statistics
    */
   tick(): { moneyEarned: number; meltdown: boolean; heatBalance: TickHeatBalance } {
+    // Initialize per-cell performance tracking
+    this.initCellPerformance();
+
+    // Track initial fuel lifetime before processing
+    this.trackInitialFuelLifetime();
+
     // Capture initial heat state
     const heatBefore = this.getTotalGridHeat();
 
