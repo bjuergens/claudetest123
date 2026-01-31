@@ -14,6 +14,7 @@ import {
   ECONOMY,
   UpgradeType,
   UPGRADE_DEFINITIONS,
+  SecretUpgradeType,
   EXOTIC_FUEL,
   getFuelHeatGeneration,
 } from './BalanceConfig.js';
@@ -39,6 +40,10 @@ export interface PhysicsStats {
   totalMoneyEarned: number;
   fuelRodsDepleted: number;
   ticksAtHighHeat: number;
+  /** Fuel rods depleted that never exceeded 200°C */
+  fuelRodsDepletedCool: number;
+  /** Fuel rods depleted that never exceeded 100°C */
+  fuelRodsDepletedIce: number;
 }
 
 /**
@@ -52,11 +57,14 @@ export class PhysicsEngine {
     totalMoneyEarned: 0,
     fuelRodsDepleted: 0,
     ticksAtHighHeat: 0,
+    fuelRodsDepletedCool: 0,
+    fuelRodsDepletedIce: 0,
   };
 
   constructor(
     private gridManager: GridManager,
-    private getUpgradeLevel: (type: UpgradeType) => number
+    private getUpgradeLevel: (type: UpgradeType) => number,
+    private isSecretPurchased: (type: SecretUpgradeType) => boolean = () => false
   ) {}
 
   /**
@@ -101,6 +109,7 @@ export class PhysicsEngine {
    */
   getEffectiveMeltTemp(structure: StructureType): number {
     const baseTemp = STRUCTURE_BASE_STATS[structure].meltTemp;
+    let effectiveTemp = baseTemp;
 
     let upgradeType: UpgradeType | null = null;
     switch (structure) {
@@ -115,10 +124,20 @@ export class PhysicsEngine {
     if (upgradeType) {
       const level = this.getUpgradeLevel(upgradeType);
       const definition = UPGRADE_DEFINITIONS[upgradeType];
-      return baseTemp + (level * definition.improvementPerLevel);
+      effectiveTemp += level * definition.improvementPerLevel;
     }
 
-    return baseTemp;
+    // Apply secret upgrade bonuses for fuel rods
+    if (structure === StructureType.FuelRod) {
+      if (this.isSecretPurchased(SecretUpgradeType.FuelMeltTempBonus)) {
+        effectiveTemp += 500; // +500°C from Cryogenic Fuel Casing
+      }
+      if (this.isSecretPurchased(SecretUpgradeType.CoolRunning)) {
+        effectiveTemp += 1000; // +1000°C from Superconductor Technology
+      }
+    }
+
+    return effectiveTemp;
   }
 
   /**
@@ -215,6 +234,11 @@ export class PhysicsEngine {
         }
 
         cell.heat += heatGeneration;
+
+        // Track max temperature for secret unlock tracking
+        if (cell.heat > cell.maxTempReached) {
+          cell.maxTempReached = cell.heat;
+        }
       }
     }
   }
@@ -237,6 +261,15 @@ export class PhysicsEngine {
 
         if (cell.lifetime <= 0) {
           this.stats.fuelRodsDepleted++;
+
+          // Track clean depletions for secret unlocks
+          if (cell.maxTempReached <= 200) {
+            this.stats.fuelRodsDepletedCool++;
+          }
+          if (cell.maxTempReached <= 100) {
+            this.stats.fuelRodsDepletedIce++;
+          }
+
           this.emitEvent({
             type: 'fuel_depleted',
             x,
@@ -325,13 +358,15 @@ export class PhysicsEngine {
       for (let x = 0; x < gridSize; x++) {
         const cell = grid[y][x];
         if (cell.structure !== StructureType.Turbine) continue;
-        if (cell.heat <= 0) continue;
+        if (cell.heat <= 100) continue; // Turbines only work above 100°C
 
         const baseStats = STRUCTURE_BASE_STATS[StructureType.Turbine];
         const maxHeatConsumption = baseStats.maxHeatConsumption * Math.pow(10, cell.tier - 1);
         const powerGeneration = baseStats.powerGeneration;
 
-        const heatConsumed = Math.min(cell.heat, maxHeatConsumption);
+        // Only consume heat above 100°C
+        const heatAbove100 = cell.heat - 100;
+        const heatConsumed = Math.min(heatAbove100, maxHeatConsumption);
         const powerGenerated = heatConsumed * powerGeneration;
 
         cell.heat -= heatConsumed;

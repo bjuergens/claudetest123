@@ -17,6 +17,8 @@ export interface Cell {
   lifetime: number;
   /** Whether this is an exotic variant (fuel rods only) */
   isExotic: boolean;
+  /** Maximum temperature this cell has reached (fuel rods only, for secret unlocks) */
+  maxTempReached: number;
 }
 
 export class GridManager {
@@ -56,6 +58,7 @@ export class GridManager {
       power: 0,
       lifetime: 0,
       isExotic: false,
+      maxTempReached: 0,
     };
   }
 

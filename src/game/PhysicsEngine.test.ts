@@ -122,10 +122,17 @@ describe('PhysicsEngine', () => {
       const substation = grid.getCellRef(5, 7)!;
       substation.structure = StructureType.Substation;
 
-      const result = physics.tick();
+      // Run multiple ticks - turbines only work above 100°C
+      let totalMoney = 0;
+      let meltdown = false;
+      for (let i = 0; i < 50 && totalMoney === 0; i++) {
+        const result = physics.tick();
+        totalMoney += result.moneyEarned;
+        if (result.meltdown) meltdown = true;
+      }
 
-      expect(result.moneyEarned).toBeGreaterThan(0);
-      expect(result.meltdown).toBe(false);
+      expect(totalMoney).toBeGreaterThan(0);
+      expect(meltdown).toBe(false);
     });
   });
 
