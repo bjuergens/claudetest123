@@ -389,11 +389,9 @@ export class HeatGame {
     const oldStructure = cell.structure;
     const oldTier = cell.tier;
 
-    // Refund if salvage is unlocked
-    if (this.upgradeManager.isSecretPurchased(SecretUpgradeType.Salvage)) {
-      const refund = Math.floor(getStructureCost(oldStructure, oldTier) * 0.5);
-      this.money += refund;
-    }
+    // Base 75% refund on sell
+    const refund = Math.floor(getStructureCost(oldStructure, oldTier) * 0.75);
+    this.money += refund;
 
     this.gridManager.resetCell(x, y);
     this.stats.demolishCount++;

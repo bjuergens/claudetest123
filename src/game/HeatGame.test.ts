@@ -163,13 +163,15 @@ describe('HeatGame', () => {
       expect(cell?.structure).toBe(StructureType.Empty);
     });
 
-    it('should not refund money when demolishing (without salvage upgrade)', () => {
+    it('should refund 75% when demolishing', () => {
+      const moneyBefore = game.getMoney();
       game.build(0, 0, StructureType.FuelRod, Tier.T1);
-      const moneyAfterBuild = game.getMoney();
+      const cost = 10; // T1 fuel rod cost
+      const expectedRefund = Math.floor(cost * 0.75);
 
       game.demolish(0, 0);
 
-      expect(game.getMoney()).toBe(moneyAfterBuild);
+      expect(game.getMoney()).toBe(moneyBefore - cost + expectedRefund);
     });
 
     it('should reset heat when demolishing', () => {

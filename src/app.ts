@@ -202,8 +202,9 @@ function initGame(): void {
   renderer.onCellClick((x, y, button) => {
     if (button === 0) {
       const structure = renderer.getSelectedStructure();
-      if (game.canBuild(x, y, structure)) {
-        game.build(x, y, structure);
+      const tier = renderer.getSelectedTier();
+      if (game.canBuild(x, y, structure, tier)) {
+        game.build(x, y, structure, tier);
       }
     } else if (button === 2) {
       game.demolish(x, y);
