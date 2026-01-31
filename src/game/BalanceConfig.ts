@@ -121,23 +121,34 @@ export interface StructureBaseStats {
  * - Substation: 80°C (very fragile, needs protection)
  * - Turbine: 150°C (moderate, needs cooling)
  * - Ventilator: 200°C (can handle some heat)
- * - Insulator: 300°C (designed to handle heat)
  * - Heat Exchanger: 400°C (built for heat transfer)
- * - Fuel Rod: 5000°C (extremely heat resistant)
+ * - Fuel Rod: 1000°C (can overheat with clustered fuel)
+ * - Insulator: 1000°C (heat resistant, designed to contain fuel)
  *
- * Conductivity:
- * - Fuel Rod: 1.5 (high - heat spreads from fuel)
- * - Heat Exchanger: 2.0 (very high - designed for transfer)
- * - Turbine, Ventilator, Substation: 1.0 (normal)
- * - Empty: 0.3 (low - air gap)
- * - Insulator: 0.05 (very low - designed to block)
+ * Heat Exchange Factor (conductivity):
+ * The rate controls how fast heat flows between adjacent cells.
+ * Rate of 1.0 = cells fully equalize temperature in one tick (per neighbor pair)
+ * Rate of 0.5 = cells move halfway toward equalization (per neighbor pair)
+ * Rate of 0.0 = no heat exchange
+ * The effective rate between two cells is the average of their factors.
+ *
+ * Note: Since each cell has up to 4 neighbors, total heat flow per tick is
+ * the sum of all pairwise exchanges. Values are calibrated to produce similar
+ * heat spread rates as the original algorithm.
+ *
+ * - Void Cell: 1.0 (maximum - pulls heat extremely fast)
+ * - Heat Exchanger: 0.4 (very fast transfer)
+ * - Fuel Rod: 0.3 (fast - heat spreads from fuel)
+ * - Turbine, Ventilator, Substation: 0.2 (normal)
+ * - Empty: 0.06 (slow - air gap)
+ * - Insulator: 0.005 (extremely slow - designed to block heat)
  */
 export const STRUCTURE_BASE_STATS: Record<StructureType, StructureBaseStats> = {
   [StructureType.Empty]: {
     name: 'Empty',
     baseCost: 0,
     meltTemp: Infinity,
-    conductivity: 0.3,
+    conductivity: 0.06,
     heatGeneration: 0,
     heatDissipation: 0,
     powerGeneration: 0,
@@ -151,8 +162,8 @@ export const STRUCTURE_BASE_STATS: Record<StructureType, StructureBaseStats> = {
   [StructureType.FuelRod]: {
     name: 'Fuel Rod',
     baseCost: 10,
-    meltTemp: 2500, // Lowered to make meltdowns achievable with clustered fuel
-    conductivity: 1.5,
+    meltTemp: 1000, // Lowered to make meltdowns achievable with new heat exchange algorithm
+    conductivity: 0.3,
     heatGeneration: 100, // T1: 100 heat/tick - high enough to cause meltdowns when clustered
     heatDissipation: 0,
     powerGeneration: 0,
@@ -167,7 +178,7 @@ export const STRUCTURE_BASE_STATS: Record<StructureType, StructureBaseStats> = {
     name: 'Ventilator',
     baseCost: 10,
     meltTemp: 200,
-    conductivity: 1.0,
+    conductivity: 0.2,
     heatGeneration: 0,
     heatDissipation: 5, // T1: 5 heat/tick removed
     powerGeneration: 0,
@@ -182,7 +193,7 @@ export const STRUCTURE_BASE_STATS: Record<StructureType, StructureBaseStats> = {
     name: 'Heat Exchanger',
     baseCost: 15,
     meltTemp: 400,
-    conductivity: 2.0,
+    conductivity: 0.4,
     heatGeneration: 0,
     heatDissipation: 0,
     powerGeneration: 0,
@@ -196,8 +207,8 @@ export const STRUCTURE_BASE_STATS: Record<StructureType, StructureBaseStats> = {
   [StructureType.Insulator]: {
     name: 'Insulator',
     baseCost: 8,
-    meltTemp: 300,
-    conductivity: 0.05,
+    meltTemp: 1000,
+    conductivity: 0.005,
     heatGeneration: 0,
     heatDissipation: 0,
     powerGeneration: 0,
@@ -212,7 +223,7 @@ export const STRUCTURE_BASE_STATS: Record<StructureType, StructureBaseStats> = {
     name: 'Turbine',
     baseCost: 25, // T1: 25, T2: 2500 (close to user's 250 for T2 if we adjust)
     meltTemp: 150,
-    conductivity: 1.0,
+    conductivity: 0.2,
     heatGeneration: 0,
     heatDissipation: 0,
     powerGeneration: 0.1, // Power per heat consumed
@@ -227,7 +238,7 @@ export const STRUCTURE_BASE_STATS: Record<StructureType, StructureBaseStats> = {
     name: 'Substation',
     baseCost: 50, // T1: 50, T2: 5000 (close to user's 500 for T2 if we adjust)
     meltTemp: 80,
-    conductivity: 1.0,
+    conductivity: 0.2,
     heatGeneration: 0,
     heatDissipation: 0,
     powerGeneration: 0,
@@ -242,7 +253,7 @@ export const STRUCTURE_BASE_STATS: Record<StructureType, StructureBaseStats> = {
     name: 'Void Cell',
     baseCost: 100,
     meltTemp: Infinity, // Cannot melt
-    conductivity: 10.0, // Extremely high - sucks in heat
+    conductivity: 1.0, // Maximum - pulls heat extremely fast
     heatGeneration: 0,
     heatDissipation: 50, // Destroys heat
     powerGeneration: 0,
@@ -260,7 +271,7 @@ export const STRUCTURE_BASE_STATS: Record<StructureType, StructureBaseStats> = {
 
 export const FUEL_ADJACENCY = {
   /** Heat multiplier per adjacent fuel rod (4-way orthogonal) */
-  BONUS_PER_ADJACENT: 0.5, // 1 adjacent = 1.5x, 2 = 2x, 3 = 2.5x, 4 = 3x
+  BONUS_PER_ADJACENT: 1.0, // 1 adjacent = 2x, 2 = 3x, 3 = 4x, 4 = 5x (500%)
 };
 
 // =============================================================================
@@ -356,7 +367,7 @@ export const UPGRADE_DEFINITIONS: Record<UpgradeType, UpgradeDefinition> = {
     baseCost: 200,
     costMultiplier: 2.0,
     maxLevel: 10,
-    improvementPerLevel: 0.2, // +0.2 conductivity per level
+    improvementPerLevel: 0.03, // +0.03 heat exchange per level (0.15 base + 0.3 max = 0.45)
     isMultiplicative: false,
   },
 

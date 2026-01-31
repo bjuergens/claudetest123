@@ -11,13 +11,23 @@ import {
 import { getStructureCost, STRUCTURE_BASE_STATS } from './BalanceConfig.js';
 
 /**
- * Build a heat trap that causes meltdown - 2 fuel rods surrounded by insulation
+ * Build a heat trap that causes meltdown - 2x2 cluster of fuel rods surrounded by insulation
+ * Each fuel rod has 2 adjacent fuel rods, giving 2x heat multiplier (1 + 0.5*2)
+ * Total heat generation: 4 * 100 * 2 = 800 heat/tick
  */
 function buildMeltdownTrap(game: HeatGame, centerX = 8, centerY = 8): void {
+  // 2x2 fuel rod cluster
   game.build(centerX, centerY, StructureType.FuelRod, Tier.T1);
+  game.build(centerX + 1, centerY, StructureType.FuelRod, Tier.T1);
   game.build(centerX, centerY + 1, StructureType.FuelRod, Tier.T1);
-  // Surround with insulation to trap heat
-  for (const [dx, dy] of [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [1, 1], [-1, 2], [0, 2], [1, 2]]) {
+  game.build(centerX + 1, centerY + 1, StructureType.FuelRod, Tier.T1);
+  // Surround with insulation to trap heat (forms a ring around the 2x2 cluster)
+  for (const [dx, dy] of [
+    [-1, -1], [0, -1], [1, -1], [2, -1],  // top row
+    [-1, 0], [2, 0],                       // middle rows (sides)
+    [-1, 1], [2, 1],
+    [-1, 2], [0, 2], [1, 2], [2, 2],       // bottom row
+  ]) {
     game.build(centerX + dx, centerY + dy, StructureType.Insulator, Tier.T1);
   }
 }
