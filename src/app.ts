@@ -230,9 +230,32 @@ function initGame(): void {
     gridPadding: GRID_PADDING,
   });
 
+  // Game loop state
+  let lastTick = 0;
+  let running = true;
+  let paused = false;
+  let ticksSinceLastSave = 0;
+
+  // Pause/unpause functions
+  function setPaused(newPaused: boolean): void {
+    paused = newPaused;
+    // If unpausing after a crash, restart the loop
+    if (!newPaused && !running) {
+      running = true;
+      requestAnimationFrame(gameLoop);
+      showToast('Game resumed', 'info');
+    }
+  }
+
+  function isPaused(): boolean {
+    return paused;
+  }
+
   if (gameUI) {
     renderer.createUI(gameUI, {
       onResetSave: resetGame,
+      onPauseToggle: setPaused,
+      isPaused: isPaused,
       buildVersion: BUILD_VERSION,
     });
   }
@@ -249,15 +272,12 @@ function initGame(): void {
     }
   });
 
-  let lastTick = 0;
-  let running = true;
-  let ticksSinceLastSave = 0;
-
   function gameLoop(timestamp: number): void {
     if (!running) return;
 
     try {
-      if (timestamp - lastTick >= TICK_INTERVAL) {
+      // Only tick if not paused
+      if (!paused && timestamp - lastTick >= TICK_INTERVAL) {
         game.tick();
         lastTick = timestamp;
 
@@ -273,6 +293,7 @@ function initGame(): void {
       requestAnimationFrame(gameLoop);
     } catch (error) {
       running = false;
+      paused = true;
       handleGameCrash(error, game);
     }
   }
@@ -280,29 +301,90 @@ function initGame(): void {
   requestAnimationFrame(gameLoop);
 }
 
+/**
+ * Show a toast notification
+ */
+function showToast(message: string, type: 'info' | 'error' | 'warning' = 'info', duration: number = 5000): void {
+  const toast = document.createElement('div');
+  toast.className = `game-toast game-toast-${type}`;
+  toast.style.cssText = `
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    padding: 12px 20px;
+    border-radius: 6px;
+    font-family: system-ui, sans-serif;
+    font-size: 14px;
+    z-index: 10001;
+    animation: toast-slide-in 0.3s ease-out;
+    max-width: 400px;
+    word-wrap: break-word;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    ${type === 'error' ? 'background: #d32f2f; color: white;' : ''}
+    ${type === 'warning' ? 'background: #f57c00; color: white;' : ''}
+    ${type === 'info' ? 'background: #1976d2; color: white;' : ''}
+  `;
+  toast.textContent = message;
+  document.body.appendChild(toast);
+
+  // Add animation styles if not present
+  if (!document.getElementById('toast-styles')) {
+    const style = document.createElement('style');
+    style.id = 'toast-styles';
+    style.textContent = `
+      @keyframes toast-slide-in {
+        from { transform: translateX(100%); opacity: 0; }
+        to { transform: translateX(0); opacity: 1; }
+      }
+      @keyframes toast-slide-out {
+        from { transform: translateX(0); opacity: 1; }
+        to { transform: translateX(100%); opacity: 0; }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  setTimeout(() => {
+    toast.style.animation = 'toast-slide-out 0.3s ease-in forwards';
+    setTimeout(() => toast.remove(), 300);
+  }, duration);
+}
+
 function handleGameCrash(error: unknown, game: HeatGame): void {
-  const state = {
-    money: game.getMoney(),
-    ticks: game.getTickCount(),
-    meltdowns: game.getMeltdownCount(),
-    totalPower: game.getTotalPowerGenerated(),
-    grid: game.getGridSnapshot(),
+  const errorMessage = error instanceof Error ? error.message : String(error);
+  const errorName = error instanceof Error ? error.name : 'Error';
+
+  // Log detailed crash info to console
+  const crashInfo = {
+    error: errorMessage,
+    errorName,
+    timestamp: new Date().toISOString(),
+    gameState: {
+      money: game.getMoney(),
+      ticks: game.getTickCount(),
+      meltdowns: game.getMeltdownCount(),
+      totalPower: game.getTotalPowerGenerated(),
+    },
   };
 
-  console.error('Game crashed:', error);
-  console.error('Game state at crash:', JSON.stringify(state, null, 2));
+  console.error('=== GAME CRASH ===');
+  console.error('Error:', errorMessage);
+  console.error('Error name:', errorName);
+  console.error('Crash info:', JSON.stringify(crashInfo, null, 2));
+  if (error instanceof Error && error.stack) {
+    console.error('Stack trace:', error.stack);
+  }
 
-  const banner = document.createElement('div');
-  banner.style.cssText = `
-    position: fixed; top: 0; left: 0; right: 0;
-    background: #d32f2f; color: white; padding: 16px;
-    font-family: monospace; z-index: 10000;
-  `;
-  banner.innerHTML = `
-    <strong>Game crashed!</strong> ${error instanceof Error ? error.message : String(error)}
-    <br><small>Check console for details. Refresh to restart.</small>
-  `;
-  document.body.prepend(banner);
+  // Show toast notification
+  showToast(
+    `Game crashed: ${errorName}. Game paused. Use Options → Resume to try again.`,
+    'error',
+    10000
+  );
+
+  // Also log a helpful message about recovery
+  console.info('Game has been paused. You can try to resume from the Options menu.');
+  console.info('If the crash persists, consider resetting your save from the Options menu.');
 }
 
 // Start game when DOM is ready

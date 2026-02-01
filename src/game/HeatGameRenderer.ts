@@ -93,6 +93,8 @@ export interface RenderConfig {
 
 export interface UIOptions {
   onResetSave?: () => void;
+  onPauseToggle?: (paused: boolean) => void;
+  isPaused?: () => boolean;
   buildVersion?: string;
 }
 
@@ -101,18 +103,6 @@ export const DEFAULT_RENDER_CONFIG: RenderConfig = {
   gridPadding: 10,
   showHeatOverlay: true,
   showGrid: true,
-};
-
-// Color mapping for structures
-const STRUCTURE_COLORS: Record<StructureType, string> = {
-  [StructureType.Empty]: '#2a2a2a',
-  [StructureType.FuelRod]: '#ff6b00',
-  [StructureType.Ventilator]: '#00aaff',
-  [StructureType.HeatExchanger]: '#ffaa00',
-  [StructureType.Insulator]: '#888888',
-  [StructureType.Turbine]: '#aa00ff',
-  [StructureType.Substation]: '#ffff00',
-  [StructureType.VoidCell]: '#000066',
 };
 
 // Structure symbols for simple rendering
@@ -816,6 +806,8 @@ export class HeatGameRenderer {
     });
   }
 
+  private pauseButton: HTMLButtonElement | null = null;
+
   private createOptionsMenu(): void {
     if (!this.optionsMenu) return;
 
@@ -826,6 +818,26 @@ export class HeatGameRenderer {
 
     const optionsList = document.createElement('div');
     optionsList.className = 'options-list';
+
+    // Pause/Resume button
+    if (this.uiOptions.onPauseToggle && this.uiOptions.isPaused) {
+      const pauseItem = document.createElement('div');
+      pauseItem.className = 'options-item';
+
+      this.pauseButton = document.createElement('button');
+      this.pauseButton.className = 'options-btn pause-btn';
+      this.pauseButton.textContent = this.uiOptions.isPaused() ? 'Resume Game' : 'Pause Game';
+      this.pauseButton.addEventListener('click', () => {
+        if (this.uiOptions.onPauseToggle && this.uiOptions.isPaused) {
+          const newPaused = !this.uiOptions.isPaused();
+          this.uiOptions.onPauseToggle(newPaused);
+          this.updatePauseButton();
+        }
+      });
+
+      pauseItem.appendChild(this.pauseButton);
+      optionsList.appendChild(pauseItem);
+    }
 
     // Reset save button
     if (this.uiOptions.onResetSave) {
@@ -854,6 +866,14 @@ export class HeatGameRenderer {
     }
 
     this.optionsMenu.appendChild(optionsList);
+  }
+
+  private updatePauseButton(): void {
+    if (this.pauseButton && this.uiOptions.isPaused) {
+      const isPaused = this.uiOptions.isPaused();
+      this.pauseButton.textContent = isPaused ? 'Resume Game' : 'Pause Game';
+      this.pauseButton.classList.toggle('paused', isPaused);
+    }
   }
 
   private updateBuildMenuSelection(): void {

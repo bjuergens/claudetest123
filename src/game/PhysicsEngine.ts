@@ -5,6 +5,17 @@
  * This class is responsible for all physics simulation logic.
  */
 
+/**
+ * Error thrown when heat balance equation is violated.
+ * This indicates a bug in the physics simulation.
+ */
+export class HeatBalanceError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'HeatBalanceError';
+  }
+}
+
 import {
   CORE_SETTINGS,
   StructureType,
@@ -800,15 +811,15 @@ export class PhysicsEngine {
     const isBalanced = Math.abs(imbalance) < TOLERANCE;
 
     if (!isBalanced) {
-      console.warn(
-        `[PhysicsEngine] Heat balance violation detected!\n` +
-        `  Generated: ${heatGenerated.toFixed(2)}\n` +
-        `  Ventilated: ${heatVentilated.toFixed(2)}\n` +
-        `  Converted to power: ${heatConvertedToPower.toFixed(2)}\n` +
-        `  Lost to environment: ${heatLostToEnvironment.toFixed(2)}\n` +
-        `  Expected delta: ${expectedDelta.toFixed(2)}\n` +
-        `  Actual delta: ${heatDeltaInGrid.toFixed(2)}\n` +
-        `  Imbalance: ${imbalance.toFixed(4)}`
+      throw new HeatBalanceError(
+        `Heat balance violation detected! ` +
+        `Generated: ${heatGenerated.toFixed(2)}, ` +
+        `Ventilated: ${heatVentilated.toFixed(2)}, ` +
+        `Converted to power: ${heatConvertedToPower.toFixed(2)}, ` +
+        `Lost to environment: ${heatLostToEnvironment.toFixed(2)}, ` +
+        `Expected delta: ${expectedDelta.toFixed(2)}, ` +
+        `Actual delta: ${heatDeltaInGrid.toFixed(2)}, ` +
+        `Imbalance: ${imbalance.toFixed(4)}`
       );
     }
 
