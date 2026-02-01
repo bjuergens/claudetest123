@@ -48,17 +48,33 @@ describe('UpgradeManager', () => {
 
   describe('secret unlocks', () => {
     it('unlocks secrets when conditions are met', () => {
-      const stats = { meltdownCount: 1, filledCells: 0, totalMoneyEarned: 10000, demolishCount: 100, ticksAtHighHeat: 0 };
+      const stats = {
+        meltdownCount: 1,
+        filledCells: 0,
+        totalMoneyEarned: 10000,
+        sellCount: 100,
+        ticksAtHighHeat: 0,
+        fuelRodsDepletedCool: 0,
+        fuelRodsDepletedIce: 0,
+      };
 
       const unlocked = upgrades.checkSecretUnlocks(stats);
 
       expect(unlocked).toContain(SecretUpgradeType.ExoticFuel);   // 1 meltdown
-      expect(unlocked).toContain(SecretUpgradeType.Salvage);       // 100 demolishes
+      expect(unlocked).toContain(SecretUpgradeType.Salvage);       // 100 sells
       expect(unlocked).toContain(SecretUpgradeType.Overclock);     // 10000 money
     });
 
     it('does not re-unlock already unlocked secrets', () => {
-      const stats = { meltdownCount: 1, filledCells: 0, totalMoneyEarned: 0, demolishCount: 0, ticksAtHighHeat: 0 };
+      const stats = {
+        meltdownCount: 1,
+        filledCells: 0,
+        totalMoneyEarned: 0,
+        sellCount: 0,
+        ticksAtHighHeat: 0,
+        fuelRodsDepletedCool: 0,
+        fuelRodsDepletedIce: 0,
+      };
 
       const first = upgrades.checkSecretUnlocks(stats);
       const second = upgrades.checkSecretUnlocks(stats);
@@ -68,7 +84,15 @@ describe('UpgradeManager', () => {
     });
 
     it('toggleable secrets auto-enable on purchase', () => {
-      upgrades.checkSecretUnlocks({ meltdownCount: 1, filledCells: 0, totalMoneyEarned: 0, demolishCount: 0, ticksAtHighHeat: 0 });
+      upgrades.checkSecretUnlocks({
+        meltdownCount: 1,
+        filledCells: 0,
+        totalMoneyEarned: 0,
+        sellCount: 0,
+        ticksAtHighHeat: 0,
+        fuelRodsDepletedCool: 0,
+        fuelRodsDepletedIce: 0,
+      });
       upgrades.purchaseSecret(SecretUpgradeType.ExoticFuel, 1e6);
 
       expect(upgrades.isSecretEnabled(SecretUpgradeType.ExoticFuel)).toBe(true);

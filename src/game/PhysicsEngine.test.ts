@@ -176,32 +176,47 @@ describe('PhysicsEngine', () => {
     });
   });
 
-  describe('meltdown behavior', () => {
-    it('fuel rod overheating triggers meltdown and clears grid', () => {
-      // Place some structures
+  describe('melting behavior', () => {
+    it('fuel rod overheating turns to slag, not grid clear', () => {
+      // Place some structures far away
       grid.getCellRef(3, 3)!.structure = StructureType.Turbine;
-      grid.getCellRef(8, 8)!.structure = StructureType.Ventilator;
+      grid.getCellRef(12, 12)!.structure = StructureType.Ventilator;
 
       // Overheat fuel rod
       const fuel = grid.getCellRef(5, 5)!;
       fuel.structure = StructureType.FuelRod;
       fuel.heat = STRUCTURE_BASE_STATS[StructureType.FuelRod].meltTemp + 100;
 
-      const meltdown = physics.processOverheating();
+      physics.processOverheating();
 
-      expect(meltdown).toBe(true);
-      expect(grid.getFilledCellCount()).toBe(0);
+      // Fuel rod should turn to slag, not clear grid
+      expect(grid.getCell(5, 5)!.structure).toBe(StructureType.MoltenSlag);
+      // Other structures should still exist
+      expect(grid.getCell(3, 3)!.structure).toBe(StructureType.Turbine);
+      expect(grid.getCell(12, 12)!.structure).toBe(StructureType.Ventilator);
     });
 
-    it('non-fuel structures melt individually without meltdown', () => {
+    it('non-fuel structures melt to slag when overheating', () => {
       const turbine = grid.getCellRef(5, 5)!;
       turbine.structure = StructureType.Turbine;
       turbine.heat = STRUCTURE_BASE_STATS[StructureType.Turbine].meltTemp + 100;
 
-      const meltdown = physics.processOverheating();
+      physics.processOverheating();
 
-      expect(meltdown).toBe(false);
+      expect(grid.getCell(5, 5)!.structure).toBe(StructureType.MoltenSlag);
+    });
+
+    it('molten slag decays after its lifetime', () => {
+      const slag = grid.getCellRef(5, 5)!;
+      slag.structure = StructureType.MoltenSlag;
+      slag.lifetime = 1; // Will decay on next call
+      slag.heat = 500;
+
+      physics.processSlagPlasmaDecay();
+
+      // Should be empty but keep heat
       expect(grid.getCell(5, 5)!.structure).toBe(StructureType.Empty);
+      expect(grid.getCell(5, 5)!.heat).toBe(500);
     });
   });
 
@@ -219,15 +234,12 @@ describe('PhysicsEngine', () => {
 
       // Run multiple ticks - turbines only work above 100°C
       let totalMoney = 0;
-      let meltdown = false;
       for (let i = 0; i < 50 && totalMoney === 0; i++) {
         const result = physics.tick();
         totalMoney += result.moneyEarned;
-        if (result.meltdown) meltdown = true;
       }
 
       expect(totalMoney).toBeGreaterThan(0);
-      expect(meltdown).toBe(false);
     });
   });
 
