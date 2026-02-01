@@ -144,6 +144,7 @@ export class HeatGameRenderer {
   // UI elements
   private uiContainer: HTMLElement | null = null;
   private moneyDisplay: HTMLElement | null = null;
+  private manualClickButton: HTMLButtonElement | null = null;
   private statsDisplay: HTMLElement | null = null;
   private buildMenu: HTMLElement | null = null;
   private upgradeMenu: HTMLElement | null = null;
@@ -582,6 +583,16 @@ export class HeatGameRenderer {
     this.moneyDisplay.className = 'heat-game-money';
     container.appendChild(this.moneyDisplay);
 
+    // Manual click button
+    this.manualClickButton = document.createElement('button');
+    this.manualClickButton.className = 'manual-click-btn';
+    this.manualClickButton.textContent = `Generate €${this.game.getMoneyPerClick()}`;
+    this.manualClickButton.addEventListener('click', () => {
+      this.game.manualGenerate();
+      this.updateManualClickButton();
+    });
+    container.appendChild(this.manualClickButton);
+
     // Stats display
     this.statsDisplay = document.createElement('div');
     this.statsDisplay.className = 'heat-game-stats';
@@ -659,9 +670,10 @@ export class HeatGameRenderer {
       // Buy button
       const tier = this.structureTiers.get(structure) || Tier.T1;
       const cost = getStructureCost(structure, tier);
+      const effectiveStat = this.getEffectiveStatDisplay(structure, tier);
       const buyBtn = document.createElement('button');
       buyBtn.className = 'build-btn';
-      buyBtn.innerHTML = `<span class="struct-symbol">${STRUCTURE_SYMBOLS[structure]}</span> <span class="struct-name">${stats.name}</span> <span class="struct-tier">T${tier}</span> <span class="struct-cost">€${cost}</span>`;
+      buyBtn.innerHTML = `<span class="struct-symbol">${STRUCTURE_SYMBOLS[structure]}</span> <span class="struct-name">${stats.name}</span> <span class="struct-tier">T${tier}</span> <span class="struct-stat">${effectiveStat}</span> <span class="struct-cost">€${cost}</span>`;
       buyBtn.dataset.structure = structure;
       buyBtn.addEventListener('click', () => {
         this.selectedTier = this.structureTiers.get(structure) || Tier.T1;
@@ -693,6 +705,37 @@ export class HeatGameRenderer {
     }
   }
 
+  private getEffectiveStatDisplay(structure: StructureType, tier: Tier): string {
+    switch (structure) {
+      case StructureType.FuelRod: {
+        const heat = this.game.getEffectiveFuelHeatGenerationForTier(tier);
+        return `${heat} heat/tick`;
+      }
+      case StructureType.Turbine: {
+        const power = this.game.getEffectiveTurbinePowerForTier(tier);
+        return `${power.toFixed(1)} power/tick`;
+      }
+      case StructureType.Substation: {
+        const saleRate = this.game.getEffectivePowerSaleRateForTier(tier);
+        return `€${saleRate.toFixed(1)}/tick`;
+      }
+      case StructureType.Ventilator: {
+        const dissipation = this.game.getEffectiveVentilatorDissipationForTier(tier);
+        return `-${dissipation} heat/tick`;
+      }
+      case StructureType.HeatExchanger: {
+        const conductivity = this.game.getEffectiveHeatExchangerConductivity();
+        return `${(conductivity * 100).toFixed(0)}% conductivity`;
+      }
+      case StructureType.Insulator: {
+        const meltTemp = this.game.getEffectiveMeltTemp(structure);
+        return `${meltTemp}°C melt`;
+      }
+      default:
+        return '';
+    }
+  }
+
   private updateBuildButton(structure: StructureType): void {
     const button = this.buildButtons.get(structure);
     if (!button) return;
@@ -701,8 +744,9 @@ export class HeatGameRenderer {
     const tier = this.structureTiers.get(structure) || Tier.T1;
     const cost = getStructureCost(structure, tier);
     const canAfford = this.game.getMoney() >= cost;
+    const effectiveStat = this.getEffectiveStatDisplay(structure, tier);
 
-    button.innerHTML = `<span class="struct-symbol">${STRUCTURE_SYMBOLS[structure]}</span> <span class="struct-name">${stats.name}</span> <span class="struct-tier">T${tier}</span> <span class="struct-cost">€${cost}</span>`;
+    button.innerHTML = `<span class="struct-symbol">${STRUCTURE_SYMBOLS[structure]}</span> <span class="struct-name">${stats.name}</span> <span class="struct-tier">T${tier}</span> <span class="struct-stat">${effectiveStat}</span> <span class="struct-cost">€${cost}</span>`;
     button.disabled = !canAfford;
     button.classList.toggle('disabled', !canAfford);
   }
@@ -833,6 +877,8 @@ export class HeatGameRenderer {
       this.moneyDisplay.textContent = `Money: €${this.game.getMoney().toFixed(0)}`;
     }
 
+    this.updateManualClickButton();
+
     if (this.statsDisplay) {
       const stats = this.game.getStats();
       const heatBalance = this.game.getLastTickHeatBalance();
@@ -870,6 +916,160 @@ export class HeatGameRenderer {
     this.updateSecretMenu();
   }
 
+  private updateManualClickButton(): void {
+    if (this.manualClickButton) {
+      this.manualClickButton.textContent = `Generate €${this.game.getMoneyPerClick()}`;
+    }
+  }
+
+  private getUpgradeEffectDisplay(type: UpgradeType, level: number): { current: string; next: string; description: string } {
+    const def = UPGRADE_DEFINITIONS[type];
+    const isMaxed = def.maxLevel > 0 && level >= def.maxLevel;
+
+    switch (type) {
+      case UpgradeType.FuelHeatOutput: {
+        // Fuel heat output: base + (level * improvement)
+        const baseHeat = STRUCTURE_BASE_STATS[StructureType.FuelRod].heatGeneration;
+        const currentBonus = level * def.improvementPerLevel;
+        const nextBonus = (level + 1) * def.improvementPerLevel;
+        return {
+          description: 'Fuel rod heat output',
+          current: `+${currentBonus} heat`,
+          next: isMaxed ? 'MAX' : `+${nextBonus} heat`,
+        };
+      }
+      case UpgradeType.FuelLifetime: {
+        const currentBonus = level * def.improvementPerLevel;
+        const nextBonus = (level + 1) * def.improvementPerLevel;
+        return {
+          description: 'Fuel rod lifetime bonus',
+          current: `+${currentBonus} ticks`,
+          next: isMaxed ? 'MAX' : `+${nextBonus} ticks`,
+        };
+      }
+      case UpgradeType.TurbineConductivity: {
+        const baseCond = STRUCTURE_BASE_STATS[StructureType.Turbine].conductivity;
+        const current = (baseCond + level * def.improvementPerLevel) * 100;
+        const next = (baseCond + (level + 1) * def.improvementPerLevel) * 100;
+        return {
+          description: 'Turbine heat absorption',
+          current: `${current.toFixed(0)}%`,
+          next: isMaxed ? 'MAX' : `${next.toFixed(0)}%`,
+        };
+      }
+      case UpgradeType.InsulatorConductivity: {
+        const baseCond = STRUCTURE_BASE_STATS[StructureType.Insulator].conductivity;
+        const current = baseCond * Math.pow(0.5, level) * 100;
+        const next = baseCond * Math.pow(0.5, level + 1) * 100;
+        return {
+          description: 'Insulator heat leak',
+          current: `${current.toFixed(2)}%`,
+          next: isMaxed ? 'MAX' : `${next.toFixed(2)}%`,
+        };
+      }
+      case UpgradeType.SubstationSaleRate: {
+        const base = STRUCTURE_BASE_STATS[StructureType.Substation].powerSaleRate;
+        const current = base + level * def.improvementPerLevel;
+        const next = base + (level + 1) * def.improvementPerLevel;
+        return {
+          description: 'Substation power sold/tick',
+          current: `+${level * def.improvementPerLevel}`,
+          next: isMaxed ? 'MAX' : `+${(level + 1) * def.improvementPerLevel}`,
+        };
+      }
+      case UpgradeType.VentilatorDissipation: {
+        const currentBonus = level * def.improvementPerLevel;
+        const nextBonus = (level + 1) * def.improvementPerLevel;
+        return {
+          description: 'Ventilator cooling bonus',
+          current: `+${currentBonus} heat`,
+          next: isMaxed ? 'MAX' : `+${nextBonus} heat`,
+        };
+      }
+      case UpgradeType.TickSpeed: {
+        const current = Math.pow(def.improvementPerLevel, level) * 100;
+        const next = Math.pow(def.improvementPerLevel, level + 1) * 100;
+        return {
+          description: 'Tick speed',
+          current: `${current.toFixed(0)}%`,
+          next: isMaxed ? 'MAX' : `${next.toFixed(0)}%`,
+        };
+      }
+      case UpgradeType.ManualClickPower: {
+        const base = 1; // BASE_MONEY_PER_CLICK
+        const current = base + level * def.improvementPerLevel;
+        const next = base + (level + 1) * def.improvementPerLevel;
+        return {
+          description: 'Money per click',
+          current: `€${current}`,
+          next: isMaxed ? 'MAX' : `€${next}`,
+        };
+      }
+      case UpgradeType.MeltTempFuelRod: {
+        const base = STRUCTURE_BASE_STATS[StructureType.FuelRod].meltTemp;
+        const current = base + level * def.improvementPerLevel;
+        const next = base + (level + 1) * def.improvementPerLevel;
+        return {
+          description: 'Fuel rod melt temp',
+          current: `${current}°C`,
+          next: isMaxed ? 'MAX' : `${next}°C`,
+        };
+      }
+      case UpgradeType.MeltTempVentilator: {
+        const base = STRUCTURE_BASE_STATS[StructureType.Ventilator].meltTemp;
+        const current = base + level * def.improvementPerLevel;
+        const next = base + (level + 1) * def.improvementPerLevel;
+        return {
+          description: 'Ventilator melt temp',
+          current: `${current}°C`,
+          next: isMaxed ? 'MAX' : `${next}°C`,
+        };
+      }
+      case UpgradeType.MeltTempHeatExchanger: {
+        const base = STRUCTURE_BASE_STATS[StructureType.HeatExchanger].meltTemp;
+        const current = base + level * def.improvementPerLevel;
+        const next = base + (level + 1) * def.improvementPerLevel;
+        return {
+          description: 'Heat exchanger melt temp',
+          current: `${current}°C`,
+          next: isMaxed ? 'MAX' : `${next}°C`,
+        };
+      }
+      case UpgradeType.MeltTempInsulator: {
+        const base = STRUCTURE_BASE_STATS[StructureType.Insulator].meltTemp;
+        const current = base + level * def.improvementPerLevel;
+        const next = base + (level + 1) * def.improvementPerLevel;
+        return {
+          description: 'Insulator melt temp',
+          current: `${current}°C`,
+          next: isMaxed ? 'MAX' : `${next}°C`,
+        };
+      }
+      case UpgradeType.MeltTempTurbine: {
+        const base = STRUCTURE_BASE_STATS[StructureType.Turbine].meltTemp;
+        const current = base + level * def.improvementPerLevel;
+        const next = base + (level + 1) * def.improvementPerLevel;
+        return {
+          description: 'Turbine melt temp',
+          current: `${current}°C`,
+          next: isMaxed ? 'MAX' : `${next}°C`,
+        };
+      }
+      case UpgradeType.MeltTempSubstation: {
+        const base = STRUCTURE_BASE_STATS[StructureType.Substation].meltTemp;
+        const current = base + level * def.improvementPerLevel;
+        const next = base + (level + 1) * def.improvementPerLevel;
+        return {
+          description: 'Substation melt temp',
+          current: `${current}°C`,
+          next: isMaxed ? 'MAX' : `${next}°C`,
+        };
+      }
+      default:
+        return { description: '', current: '', next: '' };
+    }
+  }
+
   private updateUpgradeMenu(): void {
     const upgradeList = document.getElementById('upgrade-list');
     if (!upgradeList) return;
@@ -883,12 +1083,17 @@ export class HeatGameRenderer {
       const cost = this.game.getUpgradeCost(type);
       const canAfford = money >= cost;
       const isMaxed = def.maxLevel > 0 && level >= def.maxLevel;
+      const effect = this.getUpgradeEffectDisplay(type, level);
 
       html += `
         <div class="upgrade-item">
           <div class="upgrade-info">
             <span class="upgrade-name">${def.name}</span>
             <span class="upgrade-level">Lv.${level}${def.maxLevel > 0 ? '/' + def.maxLevel : ''}</span>
+          </div>
+          <div class="upgrade-effect">
+            <span class="effect-desc">${effect.description}:</span>
+            <span class="effect-values">${effect.current} → ${effect.next}</span>
           </div>
           <button class="upgrade-btn" data-upgrade="${type}" ${isMaxed || !canAfford ? 'disabled' : ''}>
             ${isMaxed ? 'MAX' : `€${cost}`}
