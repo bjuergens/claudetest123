@@ -1,0 +1,11 @@
+{
+  "run_id": "21568932272",
+  "run_number": "50",
+  "sha": "f0666bfec0a696520095d37c6e1e0735bff64793",
+  "ref": "refs/heads/main",
+  "event": "push",
+  "actor": "bjuergens",
+  "timestamp": "2026-02-01T19:37:10Z",
+  "test_outcome": "failure",
+  "repository": "bjuergens/claudetest123"
+}

@@ -1,0 +1,575 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    background: #1a1a1a;
+    min-height: 100vh;
+    color: #eee;
+    overflow-x: hidden;
+}
+
+/* App Layout */
+.app-container {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 10px;
+}
+
+.app-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 0;
+    border-bottom: 1px solid #333;
+    margin-bottom: 10px;
+}
+
+.app-header h1 {
+    font-size: 1.4rem;
+    color: #ff6b00;
+}
+
+.header-status {
+    font-size: 0.85rem;
+    color: #888;
+}
+
+/* Game Container */
+.game-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    align-items: center;
+}
+
+#game-canvas {
+    border: 2px solid #333;
+    border-radius: 4px;
+    background: #1a1a1a;
+    touch-action: none;
+}
+
+/* Game UI */
+.game-ui {
+    width: 100%;
+    max-width: 480px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.heat-game-money {
+    font-size: 1.3rem;
+    font-weight: bold;
+    color: #00ff88;
+    text-align: center;
+    padding: 8px;
+    background: #252525;
+    border-radius: 4px;
+}
+
+.manual-click-btn {
+    width: 100%;
+    padding: 12px;
+    border: 2px solid #00aa66;
+    border-radius: 4px;
+    background: #00aa66;
+    color: #fff;
+    font-size: 1rem;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.manual-click-btn:hover {
+    background: #00cc77;
+    border-color: #00cc77;
+}
+
+.manual-click-btn:active {
+    background: #008855;
+    border-color: #008855;
+    transform: scale(0.98);
+}
+
+.heat-game-stats {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+    padding: 10px;
+    background: #252525;
+    border-radius: 4px;
+    font-size: 0.9rem;
+}
+
+.heat-game-stats div {
+    color: #aaa;
+}
+
+/* Menu titles */
+.menu-title {
+    font-size: 0.9rem;
+    font-weight: bold;
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid #444;
+}
+
+/* Build Menu */
+.heat-game-build-menu {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 10px;
+    background: #252525;
+    border-radius: 4px;
+}
+
+.build-item {
+    display: flex;
+    gap: 4px;
+}
+
+.tier-btn {
+    width: 32px;
+    padding: 8px 0;
+    border: 2px solid #444;
+    border-radius: 4px;
+    background: #333;
+    color: #ddd;
+    font-size: 1rem;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.tier-btn:hover {
+    background: #555;
+    border-color: #666;
+}
+
+.tier-btn:active {
+    background: #666;
+}
+
+.build-btn {
+    flex: 1;
+    padding: 8px 10px;
+    border: 2px solid #444;
+    border-radius: 4px;
+    background: #333;
+    color: #ddd;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all 0.15s;
+    text-align: left;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.build-btn .struct-symbol {
+    font-weight: bold;
+    min-width: 14px;
+}
+
+.build-btn .struct-name {
+    flex: 1;
+}
+
+.build-btn .struct-tier {
+    color: #888;
+    font-size: 0.75rem;
+}
+
+.build-btn .struct-stat {
+    color: #ffaa00;
+    font-size: 0.7rem;
+    white-space: nowrap;
+}
+
+.build-btn .struct-cost {
+    color: #00ff88;
+    font-weight: bold;
+}
+
+.build-btn:hover:not(:disabled) {
+    background: #444;
+    border-color: #666;
+}
+
+.build-btn.selected {
+    background: #ff6b00;
+    border-color: #ff8533;
+    color: #fff;
+}
+
+.build-btn.selected .struct-tier,
+.build-btn.selected .struct-cost {
+    color: #fff;
+}
+
+.build-btn:disabled,
+.build-btn.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Upgrade Menu */
+.heat-game-upgrade-menu {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 10px;
+    background: #252525;
+    border-radius: 4px;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.upgrade-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.upgrade-item {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    grid-template-rows: auto auto;
+    gap: 2px 8px;
+    padding: 6px 8px;
+    background: #333;
+    border-radius: 4px;
+}
+
+.upgrade-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    grid-column: 1;
+    grid-row: 1;
+}
+
+.upgrade-name {
+    font-size: 0.8rem;
+    color: #ddd;
+}
+
+.upgrade-level {
+    font-size: 0.7rem;
+    color: #888;
+}
+
+.upgrade-effect {
+    grid-column: 1;
+    grid-row: 2;
+    display: flex;
+    gap: 4px;
+    font-size: 0.7rem;
+}
+
+.effect-desc {
+    color: #888;
+}
+
+.effect-values {
+    color: #ffaa00;
+    font-weight: bold;
+}
+
+.upgrade-btn {
+    grid-column: 2;
+    grid-row: 1 / 3;
+    align-self: center;
+    padding: 4px 10px;
+    border: 2px solid #444;
+    border-radius: 4px;
+    background: #00aa66;
+    color: #fff;
+    font-size: 0.75rem;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.upgrade-btn:hover:not(:disabled) {
+    background: #00cc77;
+}
+
+.upgrade-btn:disabled {
+    background: #555;
+    color: #888;
+    cursor: not-allowed;
+}
+
+/* Secret Menu */
+.heat-game-secret-menu {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 10px;
+    background: #252525;
+    border-radius: 4px;
+    max-height: 250px;
+    overflow-y: auto;
+}
+
+.secret-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.secret-item {
+    padding: 8px;
+    background: #333;
+    border-radius: 4px;
+    border-left: 3px solid #aa00ff;
+}
+
+.secret-item.purchased {
+    border-left-color: #00ff88;
+}
+
+.secret-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-bottom: 6px;
+}
+
+.secret-name {
+    font-size: 0.85rem;
+    color: #ddd;
+    font-weight: bold;
+}
+
+.secret-desc {
+    font-size: 0.7rem;
+    color: #888;
+}
+
+.secret-actions {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.secret-btn {
+    padding: 4px 12px;
+    border: 2px solid #aa00ff;
+    border-radius: 4px;
+    background: #660099;
+    color: #fff;
+    font-size: 0.75rem;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.secret-btn:hover:not(:disabled) {
+    background: #880099;
+}
+
+.secret-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.toggle-btn {
+    padding: 4px 12px;
+    border: 2px solid #444;
+    border-radius: 4px;
+    background: #555;
+    color: #888;
+    font-size: 0.75rem;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.toggle-btn.enabled {
+    background: #00aa66;
+    border-color: #00cc77;
+    color: #fff;
+}
+
+.owned {
+    font-size: 0.75rem;
+    color: #00ff88;
+    font-weight: bold;
+}
+
+.no-secrets {
+    font-size: 0.8rem;
+    color: #666;
+    font-style: italic;
+    text-align: center;
+    padding: 10px;
+}
+
+/* Options Menu */
+.heat-game-options-menu {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 10px;
+    background: #252525;
+    border-radius: 4px;
+}
+
+.options-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.options-item {
+    display: flex;
+    align-items: center;
+}
+
+.options-btn {
+    padding: 8px 16px;
+    border: 2px solid #444;
+    border-radius: 4px;
+    background: #333;
+    color: #ddd;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.options-btn:hover {
+    background: #444;
+    border-color: #666;
+}
+
+.options-btn.reset-btn {
+    background: #663333;
+    border-color: #884444;
+    color: #ffaaaa;
+}
+
+.options-btn.reset-btn:hover {
+    background: #884444;
+    border-color: #aa6666;
+}
+
+.version-item {
+    font-size: 0.75rem;
+    color: #666;
+    padding: 4px 0;
+}
+
+.version-label {
+    color: #888;
+}
+
+.version-value {
+    font-family: monospace;
+    color: #666;
+}
+
+/* Footer */
+.app-footer {
+    text-align: center;
+    padding: 10px 0;
+    border-top: 1px solid #333;
+    margin-top: 10px;
+    color: #666;
+    font-size: 0.85rem;
+}
+
+/* Action Buttons (Install/Update) */
+.action-button {
+    position: fixed;
+    bottom: 20px;
+    border: none;
+    padding: 14px 24px;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    font-weight: bold;
+    cursor: pointer;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+    transition: all 0.2s;
+    z-index: 1000;
+}
+
+.action-button:hover {
+    transform: scale(1.02);
+}
+
+.action-button:active {
+    transform: scale(0.98);
+}
+
+.install-button {
+    right: 20px;
+    background: #00aaff;
+    color: white;
+}
+
+.install-button:hover {
+    background: #0099ee;
+}
+
+.update-button {
+    left: 20px;
+    right: 20px;
+    width: calc(100% - 40px);
+    max-width: 400px;
+    margin: 0 auto;
+    background: #ff6b00;
+    color: white;
+    text-align: center;
+}
+
+.update-button:hover {
+    background: #ff8533;
+}
+
+/* Responsive */
+@media (max-width: 520px) {
+    .app-header h1 {
+        font-size: 1.2rem;
+    }
+
+    .heat-game-build-menu button {
+        flex: 1 1 100%;
+        font-size: 0.9rem;
+    }
+
+    .action-button {
+        padding: 12px 20px;
+        font-size: 0.85rem;
+    }
+}
+
+@media (min-width: 600px) {
+    .app-container {
+        padding: 20px;
+    }
+
+    .game-container {
+        flex-direction: row;
+        flex-wrap: wrap;
+        justify-content: center;
+        align-items: flex-start;
+    }
+
+    .game-ui {
+        max-width: 280px;
+    }
+}

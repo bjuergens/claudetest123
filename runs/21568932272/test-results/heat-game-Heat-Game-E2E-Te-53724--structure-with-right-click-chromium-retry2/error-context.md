@@ -1,0 +1,211 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e2]:
+  - banner [ref=e3]:
+    - heading "Heat Management" [level=1] [ref=e4]
+    - generic [ref=e5]: Registered
+  - main [ref=e6]:
+    - generic [ref=e8]:
+      - generic [ref=e9]: "Money: €500"
+      - button "Generate €1" [ref=e10] [cursor=pointer]
+      - generic [ref=e11]:
+        - generic [ref=e12]: "Total Power: 0.0"
+        - generic [ref=e13]: "Total Earned: €0"
+        - generic [ref=e14]: "Min Temp: 0°C"
+        - generic [ref=e15]: "Ticks: 5"
+        - generic [ref=e16]: "Sold: 0"
+        - generic [ref=e17]:
+          - generic [ref=e18]: Heat Balance
+          - generic [ref=e19]: "Generated: +0.0"
+          - generic [ref=e20]: "Ventilated: -0.0"
+          - generic [ref=e21]: "To Power: -0.0"
+          - generic [ref=e22]: "To Env: -0.0"
+          - generic [ref=e23]: "Net Change: +0.0"
+          - generic [ref=e24]: "Power Sold: 0.00"
+      - generic [ref=e25]:
+        - generic [ref=e26]: Buy Structures
+        - button "Sell All Structures" [ref=e28] [cursor=pointer]
+        - generic [ref=e29]:
+          - button "−" [ref=e30] [cursor=pointer]
+          - button "F Fuel Rod T1 100 heat/tick €10" [ref=e31] [cursor=pointer]:
+            - generic [ref=e32]: F
+            - generic [ref=e33]: Fuel Rod
+            - generic [ref=e34]: T1
+            - generic [ref=e35]: 100 heat/tick
+            - generic [ref=e36]: €10
+          - button "+" [ref=e37] [cursor=pointer]
+        - generic [ref=e38]:
+          - button "−" [ref=e39] [cursor=pointer]
+          - button "V Ventilator T1 -5 heat/tick €10" [ref=e40] [cursor=pointer]:
+            - generic [ref=e41]: V
+            - generic [ref=e42]: Ventilator
+            - generic [ref=e43]: T1
+            - generic [ref=e44]: "-5 heat/tick"
+            - generic [ref=e45]: €10
+          - button "+" [ref=e46] [cursor=pointer]
+        - generic [ref=e47]:
+          - button "−" [ref=e48] [cursor=pointer]
+          - button "X Heat Exchanger T1 40% conductivity €15" [ref=e49] [cursor=pointer]:
+            - generic [ref=e50]: X
+            - generic [ref=e51]: Heat Exchanger
+            - generic [ref=e52]: T1
+            - generic [ref=e53]: 40% conductivity
+            - generic [ref=e54]: €15
+          - button "+" [ref=e55] [cursor=pointer]
+        - generic [ref=e56]:
+          - button "−" [ref=e57] [cursor=pointer]
+          - button "I Insulator T1 1000°C melt €8" [ref=e58] [cursor=pointer]:
+            - generic [ref=e59]: I
+            - generic [ref=e60]: Insulator
+            - generic [ref=e61]: T1
+            - generic [ref=e62]: 1000°C melt
+            - generic [ref=e63]: €8
+          - button "+" [ref=e64] [cursor=pointer]
+        - generic [ref=e65]:
+          - button "−" [ref=e66] [cursor=pointer]
+          - button "T Turbine T1 1.0 power/tick €25" [ref=e67] [cursor=pointer]:
+            - generic [ref=e68]: T
+            - generic [ref=e69]: Turbine
+            - generic [ref=e70]: T1
+            - generic [ref=e71]: 1.0 power/tick
+            - generic [ref=e72]: €25
+          - button "+" [ref=e73] [cursor=pointer]
+        - generic [ref=e74]:
+          - button "−" [ref=e75] [cursor=pointer]
+          - button "S Substation T1 €1.0/tick €50" [ref=e76] [cursor=pointer]:
+            - generic [ref=e77]: S
+            - generic [ref=e78]: Substation
+            - generic [ref=e79]: T1
+            - generic [ref=e80]: €1.0/tick
+            - generic [ref=e81]: €50
+          - button "+" [ref=e82] [cursor=pointer]
+      - generic [ref=e83]:
+        - generic [ref=e84]: Upgrades
+        - generic [ref=e85]:
+          - generic [ref=e86]:
+            - generic [ref=e87]:
+              - generic [ref=e88]: Fuel Longevity
+              - generic [ref=e89]: Lv.0
+            - generic [ref=e90]:
+              - generic [ref=e91]: "Fuel rod lifetime bonus:"
+              - generic [ref=e92]: +0 ticks → +10 ticks
+            - button "€100" [ref=e93] [cursor=pointer]
+          - generic [ref=e94]:
+            - generic [ref=e95]:
+              - generic [ref=e96]: Enriched Fuel
+              - generic [ref=e97]: Lv.0
+            - generic [ref=e98]:
+              - generic [ref=e99]: "Fuel rod heat output:"
+              - generic [ref=e100]: +0 heat → +5 heat
+            - button "€150" [ref=e101] [cursor=pointer]
+          - generic [ref=e102]:
+            - generic [ref=e103]:
+              - generic [ref=e104]: Turbine Efficiency
+              - generic [ref=e105]: Lv.0/10
+            - generic [ref=e106]:
+              - generic [ref=e107]: "Turbine heat absorption:"
+              - generic [ref=e108]: 20% → 23%
+            - button "€200" [ref=e109] [cursor=pointer]
+          - generic [ref=e110]:
+            - generic [ref=e111]:
+              - generic [ref=e112]: Advanced Insulation
+              - generic [ref=e113]: Lv.0/10
+            - generic [ref=e114]:
+              - generic [ref=e115]: "Insulator heat leak:"
+              - generic [ref=e116]: 0.50% → 0.25%
+            - button "€150" [ref=e117] [cursor=pointer]
+          - generic [ref=e118]:
+            - generic [ref=e119]:
+              - generic [ref=e120]: Power Grid Upgrade
+              - generic [ref=e121]: Lv.0
+            - generic [ref=e122]:
+              - generic [ref=e123]: "Substation power sold/tick:"
+              - generic [ref=e124]: +0 → +1
+            - button "€500" [ref=e125] [cursor=pointer]
+          - generic [ref=e126]:
+            - generic [ref=e127]:
+              - generic [ref=e128]: Improved Cooling
+              - generic [ref=e129]: Lv.0
+            - generic [ref=e130]:
+              - generic [ref=e131]: "Ventilator cooling bonus:"
+              - generic [ref=e132]: +0 heat → +2 heat
+            - button "€100" [ref=e133] [cursor=pointer]
+          - generic [ref=e134]:
+            - generic [ref=e135]:
+              - generic [ref=e136]: Overclock
+              - generic [ref=e137]: Lv.0/5
+            - generic [ref=e138]:
+              - generic [ref=e139]: "Tick speed:"
+              - generic [ref=e140]: 100% → 80%
+            - button "€1000" [disabled] [ref=e141]
+          - generic [ref=e142]:
+            - generic [ref=e143]:
+              - generic [ref=e144]: Bigger Buttons
+              - generic [ref=e145]: Lv.0
+            - generic [ref=e146]:
+              - generic [ref=e147]: "Money per click:"
+              - generic [ref=e148]: €1 → €2
+            - button "€50" [ref=e149] [cursor=pointer]
+          - generic [ref=e150]:
+            - generic [ref=e151]:
+              - generic [ref=e152]: Reinforced Fuel Casing
+              - generic [ref=e153]: Lv.0/10
+            - generic [ref=e154]:
+              - generic [ref=e155]: "Fuel rod melt temp:"
+              - generic [ref=e156]: 2000°C → 2500°C
+            - button "€500" [ref=e157] [cursor=pointer]
+          - generic [ref=e158]:
+            - generic [ref=e159]:
+              - generic [ref=e160]: Heat-Resistant Fans
+              - generic [ref=e161]: Lv.0/10
+            - generic [ref=e162]:
+              - generic [ref=e163]: "Ventilator melt temp:"
+              - generic [ref=e164]: 200°C → 220°C
+            - button "€100" [ref=e165] [cursor=pointer]
+          - generic [ref=e166]:
+            - generic [ref=e167]:
+              - generic [ref=e168]: Hardened Exchangers
+              - generic [ref=e169]: Lv.0/10
+            - generic [ref=e170]:
+              - generic [ref=e171]: "Heat exchanger melt temp:"
+              - generic [ref=e172]: 400°C → 440°C
+            - button "€150" [ref=e173] [cursor=pointer]
+          - generic [ref=e174]:
+            - generic [ref=e175]:
+              - generic [ref=e176]: Advanced Ceramics
+              - generic [ref=e177]: Lv.0/10
+            - generic [ref=e178]:
+              - generic [ref=e179]: "Insulator melt temp:"
+              - generic [ref=e180]: 1000°C → 1030°C
+            - button "€120" [ref=e181] [cursor=pointer]
+          - generic [ref=e182]:
+            - generic [ref=e183]:
+              - generic [ref=e184]: Reinforced Turbines
+              - generic [ref=e185]: Lv.0/10
+            - generic [ref=e186]:
+              - generic [ref=e187]: "Turbine melt temp:"
+              - generic [ref=e188]: 150°C → 165°C
+            - button "€200" [ref=e189] [cursor=pointer]
+          - generic [ref=e190]:
+            - generic [ref=e191]:
+              - generic [ref=e192]: Industrial Substations
+              - generic [ref=e193]: Lv.0/10
+            - generic [ref=e194]:
+              - generic [ref=e195]: "Substation melt temp:"
+              - generic [ref=e196]: 80°C → 90°C
+            - button "€300" [ref=e197] [cursor=pointer]
+      - generic [ref=e198]:
+        - generic [ref=e199]: Secret Upgrades
+        - generic [ref=e201]: No secrets discovered yet...
+      - generic [ref=e202]:
+        - generic [ref=e203]: Options
+        - generic [ref=e204]:
+          - button "Pause Game" [ref=e206] [cursor=pointer]
+          - button "Reset Save" [ref=e208] [cursor=pointer]
+          - generic [ref=e209]:
+            - generic [ref=e210]: "Version:"
+            - generic [ref=e211]: 2026-01-31T00:00:00.000Z
+  - contentinfo [ref=e212]:
+    - paragraph [ref=e213]: "Left-click: Build | Right-click: Demolish"
+```

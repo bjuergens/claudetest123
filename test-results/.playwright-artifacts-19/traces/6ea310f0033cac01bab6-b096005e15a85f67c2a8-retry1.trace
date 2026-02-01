@@ -75,3 +75,8 @@
 {"type":"screencast-frame","pageId":"page@816795ff39a51b052f696a678de34f9f","sha1":"page@816795ff39a51b052f696a678de34f9f-1769898721878.jpeg","width":1280,"height":720,"timestamp":138598.764,"frameSwapWallTime":1769898721875.0679}
 {"type":"screencast-frame","pageId":"page@816795ff39a51b052f696a678de34f9f","sha1":"page@816795ff39a51b052f696a678de34f9f-1769898722079.jpeg","width":1280,"height":720,"timestamp":138799.497,"frameSwapWallTime":1769898722075.323}
 {"type":"screencast-frame","pageId":"page@816795ff39a51b052f696a678de34f9f","sha1":"page@816795ff39a51b052f696a678de34f9f-1769898722278.jpeg","width":1280,"height":720,"timestamp":138998.843,"frameSwapWallTime":1769898722274.801}
+{"type":"log","callId":"call@15","time":139519.677,"message":"  locator resolved to 7 elements"}
+{"type":"log","callId":"call@15","time":139519.698,"message":"  unexpected value \"7\""}
+{"type":"screencast-frame","pageId":"page@f99701fee38fc1ddb9495287e17420ee","sha1":"page@f99701fee38fc1ddb9495287e17420ee-1769974637419.jpeg","width":1280,"height":720,"timestamp":139603.416,"frameSwapWallTime":1769974637416.025}
+{"type":"screencast-frame","pageId":"page@f99701fee38fc1ddb9495287e17420ee","sha1":"page@f99701fee38fc1ddb9495287e17420ee-1769974637637.jpeg","width":1280,"height":720,"timestamp":139820.829,"frameSwapWallTime":1769974637632.658}
+{"type":"screencast-frame","pageId":"page@f99701fee38fc1ddb9495287e17420ee","sha1":"page@f99701fee38fc1ddb9495287e17420ee-1769974637836.jpeg","width":1280,"height":720,"timestamp":140020.202,"frameSwapWallTime":1769974637832.4448}
