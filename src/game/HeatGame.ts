@@ -29,6 +29,7 @@ export { StructureType, Tier, UpgradeType, SecretUpgradeType };
 export { Cell };
 export { TickHeatBalance };
 export { CellPerformance };
+export type { PhysicsStats } from './PhysicsEngine.js';
 
 export interface UpgradeState {
   levels: Record<UpgradeType, number>;
@@ -40,15 +41,28 @@ export interface SecretState {
   enabled: Record<SecretUpgradeType, boolean>;
 }
 
+/**
+ * Stats owned by HeatGame (game-level stats).
+ * Physics stats are owned by PhysicsEngine and queried on demand.
+ */
 export interface GameStats {
-  totalPowerGenerated: number;
+  // Game-owned stats
   totalMoneyEarned: number;
   meltdownCount: number;
   tickCount: number;
   demolishCount: number;
-  ticksAtHighHeat: number;
   manualClicks: number;
   structuresBuilt: number;
+}
+
+/**
+ * Combined stats view returned by getStats().
+ * Combines game-owned stats with physics-owned stats.
+ */
+export interface CombinedStats extends GameStats {
+  // Physics-owned stats (queried from PhysicsEngine)
+  totalPowerGenerated: number;
+  ticksAtHighHeat: number;
   fuelRodsDepleted: number;
   fuelRodsDepletedCool: number;
   fuelRodsDepletedIce: number;
@@ -59,6 +73,7 @@ export interface GameState {
   gridSize: number;
   money: number;
   stats: GameStats;
+  physicsStats?: import('./PhysicsEngine.js').PhysicsStats;
   upgrades: UpgradeState;
   secrets: SecretState;
 }
@@ -123,17 +138,12 @@ export class HeatGame {
 
   private createInitialStats(): GameStats {
     return {
-      totalPowerGenerated: 0,
       totalMoneyEarned: 0,
       meltdownCount: 0,
       tickCount: 0,
       demolishCount: 0,
-      ticksAtHighHeat: 0,
       manualClicks: 0,
       structuresBuilt: 0,
-      fuelRodsDepleted: 0,
-      fuelRodsDepletedCool: 0,
-      fuelRodsDepletedIce: 0,
     };
   }
 
@@ -229,15 +239,27 @@ export class HeatGame {
   }
 
   getTotalPowerGenerated(): number {
-    return this.stats.totalPowerGenerated;
+    return this.physicsEngine.getStats().totalPowerGenerated;
   }
 
   getTotalMoneyEarned(): number {
     return this.stats.totalMoneyEarned;
   }
 
-  getStats(): GameStats {
-    return { ...this.stats };
+  /**
+   * Get combined stats from game and physics engine.
+   * Physics stats are queried on demand (single source of truth).
+   */
+  getStats(): CombinedStats {
+    const physicsStats = this.physicsEngine.getStats();
+    return {
+      ...this.stats,
+      totalPowerGenerated: physicsStats.totalPowerGenerated,
+      ticksAtHighHeat: physicsStats.ticksAtHighHeat,
+      fuelRodsDepleted: physicsStats.fuelRodsDepleted,
+      fuelRodsDepletedCool: physicsStats.fuelRodsDepletedCool,
+      fuelRodsDepletedIce: physicsStats.fuelRodsDepletedIce,
+    };
   }
 
   getUpgradeLevel(type: UpgradeType): number {
@@ -520,17 +542,19 @@ export class HeatGame {
   }
 
   private checkSecretUnlocks(): void {
-    const stats = {
+    // Query physics stats from PhysicsEngine (single source of truth)
+    const physicsStats = this.physicsEngine.getStats();
+    const unlockStats = {
       meltdownCount: this.stats.meltdownCount,
       filledCells: this.gridManager.getFilledCellCount(),
       totalMoneyEarned: this.stats.totalMoneyEarned,
       demolishCount: this.stats.demolishCount,
-      ticksAtHighHeat: this.stats.ticksAtHighHeat,
-      fuelRodsDepletedCool: this.stats.fuelRodsDepletedCool,
-      fuelRodsDepletedIce: this.stats.fuelRodsDepletedIce,
+      ticksAtHighHeat: physicsStats.ticksAtHighHeat,
+      fuelRodsDepletedCool: physicsStats.fuelRodsDepletedCool,
+      fuelRodsDepletedIce: physicsStats.fuelRodsDepletedIce,
     };
 
-    this.upgradeManager.checkSecretUnlocks(stats);
+    this.upgradeManager.checkSecretUnlocks(unlockStats);
   }
 
   // ==========================================================================
@@ -540,21 +564,13 @@ export class HeatGame {
   tick(): void {
     this.stats.tickCount++;
 
-    // Run physics simulation
+    // Run physics simulation (PhysicsEngine owns physics stats)
     const result = this.physicsEngine.tick();
 
     // Store heat balance for UI access
     this.lastTickHeatBalance = result.heatBalance;
 
-    // Sync stats from physics engine (single source of truth for physics-related stats)
-    const physicsStats = this.physicsEngine.getStats();
-    this.stats.totalPowerGenerated = physicsStats.totalPowerGenerated;
-    this.stats.ticksAtHighHeat = physicsStats.ticksAtHighHeat;
-    this.stats.fuelRodsDepleted = physicsStats.fuelRodsDepleted;
-    this.stats.fuelRodsDepletedCool = physicsStats.fuelRodsDepletedCool;
-    this.stats.fuelRodsDepletedIce = physicsStats.fuelRodsDepletedIce;
-
-    // Add money earned from power sales
+    // Add money earned from power sales (HeatGame owns money tracking)
     this.money += result.moneyEarned;
     this.stats.totalMoneyEarned += result.moneyEarned;
 
@@ -567,11 +583,14 @@ export class HeatGame {
   // ==========================================================================
 
   serialize(): string {
+    // Get physics stats for serialization (owned by PhysicsEngine)
+    const physicsStats = this.physicsEngine.getStats();
     const state: GameState = {
       grid: this.gridManager.getSnapshot(),
       gridSize: this.gridManager.getSize(),
       money: this.money,
       stats: { ...this.stats },
+      physicsStats: { ...physicsStats },
       upgrades: this.upgradeManager.getUpgradeState(),
       secrets: this.upgradeManager.getSecretState(),
     };
@@ -585,7 +604,7 @@ export class HeatGame {
     // Restore grid
     game.gridManager.restoreFromState(state.grid, state.gridSize);
 
-    // Restore money and stats
+    // Restore money and game-owned stats
     game.money = state.money;
     game.stats = { ...state.stats };
 
@@ -593,15 +612,21 @@ export class HeatGame {
     game.upgradeManager.restoreUpgradeState(state.upgrades);
     game.upgradeManager.restoreSecretState(state.secrets);
 
-    // Sync physics engine stats
-    game.physicsEngine.setStats({
-      totalPowerGenerated: state.stats.totalPowerGenerated,
-      totalMoneyEarned: state.stats.totalMoneyEarned,
-      fuelRodsDepleted: state.stats.fuelRodsDepleted,
-      ticksAtHighHeat: state.stats.ticksAtHighHeat,
-      fuelRodsDepletedCool: state.stats.fuelRodsDepletedCool ?? 0,
-      fuelRodsDepletedIce: state.stats.fuelRodsDepletedIce ?? 0,
-    });
+    // Restore physics stats (handle legacy saves without physicsStats)
+    if (state.physicsStats) {
+      game.physicsEngine.setStats(state.physicsStats);
+    } else {
+      // Legacy save format - physics stats were in state.stats
+      const legacyStats = state.stats as unknown as Record<string, number>;
+      game.physicsEngine.setStats({
+        totalPowerGenerated: legacyStats.totalPowerGenerated ?? 0,
+        totalMoneyEarned: legacyStats.totalMoneyEarned ?? 0,
+        fuelRodsDepleted: legacyStats.fuelRodsDepleted ?? 0,
+        ticksAtHighHeat: legacyStats.ticksAtHighHeat ?? 0,
+        fuelRodsDepletedCool: legacyStats.fuelRodsDepletedCool ?? 0,
+        fuelRodsDepletedIce: legacyStats.fuelRodsDepletedIce ?? 0,
+      });
+    }
 
     return game;
   }

@@ -15,10 +15,24 @@ HeatGame (orchestrator)
 
 2. **Upgrade Callback**: PhysicsEngine queries upgrades via closure `(type) => upgradeManager.getUpgradeLevel(type)`. Don't purchase upgrades during physics tick.
 
-3. **Stats Ownership**:
-   - Physics stats (totalPowerGenerated, ticksAtHighHeat, fuelRodsDepleted) → owned by PhysicsEngine
-   - Game stats (meltdownCount, structuresBuilt, demolishCount) → owned by HeatGame
-   - HeatGame syncs from PhysicsEngine after each tick
+3. **Stats Ownership** (Single Source of Truth):
+   - Physics stats → **owned by PhysicsEngine**, queried on demand via `physicsEngine.getStats()`
+     - `totalPowerGenerated`, `ticksAtHighHeat`, `fuelRodsDepleted`, `fuelRodsDepletedCool`, `fuelRodsDepletedIce`
+   - Game stats → **owned by HeatGame**
+     - `meltdownCount`, `tickCount`, `structuresBuilt`, `demolishCount`, `manualClicks`, `totalMoneyEarned`
+   - **No sync/duplication**: `getStats()` combines both on demand
+
+4. **Cell Access Patterns**:
+   - `getCell()` → returns copy (for read-only external access)
+   - `getCellRef()` → returns reference (for mutation, internal use)
+   - `getGridRef()` → returns entire grid reference (for PhysicsEngine)
+   - **Prefer references** over copies when mutation is needed
+
+5. **Error Handling** (Fail Fast):
+   - Physics violations (e.g., heat balance) throw `HeatBalanceError`
+   - Game loop catches exceptions, pauses game, shows toast notification
+   - User can resume from Options menu
+   - Detailed crash info logged to console
 
 ## Testing Philosophy
 
@@ -44,6 +58,7 @@ npm run dev       # Watch mode + serve
 ## Code Style
 
 - Use composition over inheritance
-- Prefer explicit state sync over implicit coupling
+- Single source of truth for each piece of state (no sync/duplication)
+- Query data from owner on demand instead of caching copies
 - Events are for UI notification, not state management
-- Single source of truth for each piece of state
+- Fail fast on invariant violations (throw, don't warn)
