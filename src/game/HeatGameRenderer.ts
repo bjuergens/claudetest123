@@ -144,6 +144,8 @@ export class HeatGameRenderer {
 
   // Build button references for updating affordability
   private buildButtons: Map<StructureType, HTMLButtonElement> = new Map();
+  // Cache for build button state to avoid unnecessary DOM updates
+  private buildButtonCache: Map<StructureType, { tier: Tier; cost: number; canAfford: boolean; effectiveStat: string }> = new Map();
 
   constructor(game: HeatGame, canvas: HTMLCanvasElement, config: Partial<RenderConfig> = {}) {
     const ctx = canvas.getContext('2d');
@@ -735,6 +737,15 @@ export class HeatGameRenderer {
     const cost = getStructureCost(structure, tier);
     const canAfford = this.game.getMoney() >= cost;
     const effectiveStat = this.getEffectiveStatDisplay(structure, tier);
+
+    // Check if anything changed since last render to avoid DOM thrashing
+    const cached = this.buildButtonCache.get(structure);
+    if (cached && cached.tier === tier && cached.cost === cost && cached.canAfford === canAfford && cached.effectiveStat === effectiveStat) {
+      return; // Nothing changed, skip DOM update
+    }
+
+    // Update cache
+    this.buildButtonCache.set(structure, { tier, cost, canAfford, effectiveStat });
 
     button.innerHTML = `<span class="struct-symbol">${STRUCTURE_SYMBOLS[structure]}</span> <span class="struct-name">${stats.name}</span> <span class="struct-tier">T${tier}</span> <span class="struct-stat">${effectiveStat}</span> <span class="struct-cost">€${cost}</span>`;
     button.disabled = !canAfford;
