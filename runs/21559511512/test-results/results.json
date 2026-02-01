@@ -1,0 +1,512 @@
+{
+  "config": {
+    "configFile": "/home/runner/work/claudetest123/claudetest123/playwright.config.ts",
+    "rootDir": "/home/runner/work/claudetest123/claudetest123/e2e",
+    "forbidOnly": true,
+    "fullyParallel": true,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "ci": {
+        "commitHref": "https://github.com/bjuergens/claudetest123/commit/ae6de64dd1a1a08655dec87ca12480394b1516d1",
+        "commitHash": "ae6de64dd1a1a08655dec87ca12480394b1516d1",
+        "prHref": "https://github.com/bjuergens/claudetest123/pull/18",
+        "prTitle": "Show effective stats in build and upgrade menus",
+        "prBaseHash": "56813d42f2bf682699c7d33884c3608da600e635",
+        "buildHref": "https://github.com/bjuergens/claudetest123/actions/runs/21559511512"
+      },
+      "gitCommit": {
+        "shortHash": "ae6de64",
+        "hash": "ae6de64dd1a1a08655dec87ca12480394b1516d1",
+        "subject": "Merge 263a73c8914515140129421f81e893de4c03e2a7 into 56813d42f2bf682699c7d33884c3608da600e635",
+        "body": "Merge 263a73c8914515140129421f81e893de4c03e2a7 into 56813d42f2bf682699c7d33884c3608da600e635\n",
+        "author": {
+          "name": "Björn Jürgens",
+          "email": "4362465+bjuergens@users.noreply.github.com",
+          "time": 1769933814000
+        },
+        "committer": {
+          "name": "GitHub",
+          "email": "noreply@github.com",
+          "time": 1769933814000
+        },
+        "branch": "HEAD"
+      },
+      "gitDiff": "diff --git a/deploy/styles.css b/deploy/styles.css\nindex fcdc7cd..b723806 100644\n--- a/deploy/styles.css\n+++ b/deploy/styles.css\n@@ -169,6 +169,12 @@ body {\n     font-size: 0.75rem;\n }\n \n+.build-btn .struct-stat {\n+    color: #ffaa00;\n+    font-size: 0.7rem;\n+    white-space: nowrap;\n+}\n+\n .build-btn .struct-cost {\n     color: #00ff88;\n     font-weight: bold;\n@@ -215,9 +221,10 @@ body {\n }\n \n .upgrade-item {\n-    display: flex;\n-    justify-content: space-between;\n-    align-items: center;\n+    display: grid;\n+    grid-template-columns: 1fr auto;\n+    grid-template-rows: auto auto;\n+    gap: 2px 8px;\n     padding: 6px 8px;\n     background: #333;\n     border-radius: 4px;\n@@ -227,6 +234,8 @@ body {\n     display: flex;\n     flex-direction: column;\n     gap: 2px;\n+    grid-column: 1;\n+    grid-row: 1;\n }\n \n .upgrade-name {\n@@ -239,7 +248,27 @@ body {\n     color: #888;\n }\n \n+.upgrade-effect {\n+    grid-column: 1;\n+    grid-row: 2;\n+    display: flex;\n+    gap: 4px;\n+    font-size: 0.7rem;\n+}\n+\n+.effect-desc {\n+    color: #888;\n+}\n+\n+.effect-values {\n+    color: #ffaa00;\n+    font-weight: bold;\n+}\n+\n .upgrade-btn {\n+    grid-column: 2;\n+    grid-row: 1 / 3;\n+    align-self: center;\n     padding: 4px 10px;\n     border: 2px solid #444;\n     border-radius: 4px;\ndiff --git a/src/game/HeatGame.ts b/src/game/HeatGame.ts\nindex bc741f4..6cfc4fc 100644\n--- a/src/game/HeatGame.ts\n+++ b/src/game/HeatGame.ts\n@@ -296,6 +296,49 @@ export class HeatGame {\n     return this.physicsEngine.getEffectivePowerSaleRate(cell);\n   }\n \n+  /**\n+   * Get effective power sale rate for a given tier (with upgrades)\n+   * Used for UI display without an actual cell\n+   */\n+  getEffectivePowerSaleRateForTier(tier: Tier): number {\n+    return this.physicsEngine.getEffectivePowerSaleRateForTier(tier);\n+  }\n+\n+  /**\n+   * Get effective heat dissipation for a ventilator at a given tier (with upgrades)\n+   */\n+  getEffectiveVentilatorDissipationForTier(tier: Tier): number {\n+    return this.physicsEngine.getEffectiveVentilatorDissipationForTier(tier);\n+  }\n+\n+  /**\n+   * Get effective heat generation for a fuel rod at a given tier (with upgrades)\n+   */\n+  getEffectiveFuelHeatGenerationForTier(tier: Tier): number {\n+    return this.physicsEngine.getEffectiveFuelHeatGenerationForTier(tier);\n+  }\n+\n+  /**\n+   * Get effective power generation for a turbine at a given tier\n+   */\n+  getEffectiveTurbinePowerForTier(tier: Tier): number {\n+    return this.physicsEngine.getEffectiveTurbinePowerForTier(tier);\n+  }\n+\n+  /**\n+   * Get effective conductivity for a heat exchanger\n+   */\n+  getEffectiveHeatExchangerConductivity(): number {\n+    return this.physicsEngine.getEffectiveHeatExchangerConductivity();\n+  }\n+\n+  /**\n+   * Get effective conductivity for an insulator (with upgrades)\n+   */\n+  getEffectiveInsulatorConductivity(): number {\n+    return this.physicsEngine.getEffectiveInsulatorConductivity();\n+  }\n+\n   // ==========================================================================\n   // MANUAL POWER GENERATION (Clicker)\n   // ==========================================================================\ndiff --git a/src/game/HeatGameRenderer.ts b/src/game/HeatGameRenderer.ts\nindex 827fca7..dfdc423 100644\n--- a/src/game/HeatGameRenderer.ts\n+++ b/src/game/HeatGameRenderer.ts\n@@ -659,9 +659,10 @@ export class HeatGameRenderer {\n       // Buy button\n       const tier = this.structureTiers.get(structure) || Tier.T1;\n       const cost = getStructureCost(structure, tier);\n+      const effectiveStat = this.getEffectiveStatDisplay(structure, tier);\n       const buyBtn = document.createElement('button');\n       buyBtn.className = 'build-btn';\n-      buyBtn.innerHTML = `<span class=\"struct-symbol\">${STRUCTURE_SYMBOLS[structure]}</span> <span class=\"struct-name\">${stats.name}</span> <span class=\"struct-tier\">T${tier}</span> <span class=\"struct-cost\">€${cost}</span>`;\n+      buyBtn.innerHTML = `<span class=\"struct-symbol\">${STRUCTURE_SYMBOLS[structure]}</span> <span class=\"struct-name\">${stats.name}</span> <span class=\"struct-tier\">T${tier}</span> <span class=\"struct-stat\">${effectiveStat}</span> <span class=\"struct-cost\">€${cost}</span>`;\n       buyBtn.dataset.structure = structure;\n       buyBtn.addEventListener('click', () => {\n         this.selectedTier = this.structureTiers.get(structure) || Tier.T1;\n@@ -693,6 +694,37 @@ export class HeatGameRenderer {\n     }\n   }\n \n+  private getEffectiveStatDisplay(structure: StructureType, tier: Tier): string {\n+    switch (structure) {\n+      case StructureType.FuelRod: {\n+        const heat = this.game.getEffectiveFuelHeatGenerationForTier(tier);\n+        return `${heat} heat/tick`;\n+      }\n+      case StructureType.Turbine: {\n+        const power = this.game.getEffectiveTurbinePowerForTier(tier);\n+        return `${power.toFixed(1)} power/tick`;\n+      }\n+      case StructureType.Substation: {\n+        const saleRate = this.game.getEffectivePowerSaleRateForTier(tier);\n+        return `€${saleRate.toFixed(1)}/tick`;\n+      }\n+      case StructureType.Ventilator: {\n+        const dissipation = this.game.getEffectiveVentilatorDissipationForTier(tier);\n+        return `-${dissipation} heat/tick`;\n+      }\n+      case StructureType.HeatExchanger: {\n+        const conductivity = this.game.getEffectiveHeatExchangerConductivity();\n+        return `${(conductivity * 100).toFixed(0)}% conductivity`;\n+      }\n+      case StructureType.Insulator: {\n+        const meltTemp = this.game.getEffectiveMeltTemp(structure);\n+        return `${meltTemp}°C melt`;\n+      }\n+      default:\n+        return '';\n+    }\n+  }\n+\n   private updateBuildButton(structure: StructureType): void {\n     const button = this.buildButtons.get(structure);\n     if (!button) return;\n@@ -701,8 +733,9 @@ export class HeatGameRenderer {\n     const tier = this.structureTiers.get(structure) || Tier.T1;\n     const cost = getStructureCost(structure, tier);\n     const canAfford = this.game.getMoney() >= cost;\n+    const effectiveStat = this.getEffectiveStatDisplay(structure, tier);\n \n-    button.innerHTML = `<span class=\"struct-symbol\">${STRUCTURE_SYMBOLS[structure]}</span> <span class=\"struct-name\">${stats.name}</span> <span class=\"struct-tier\">T${tier}</span> <span class=\"struct-cost\">€${cost}</span>`;\n+    button.innerHTML = `<span class=\"struct-symbol\">${STRUCTURE_SYMBOLS[structure]}</span> <span class=\"struct-name\">${stats.name}</span> <span class=\"struct-tier\">T${tier}</span> <span class=\"struct-stat\">${effectiveStat}</span> <span class=\"struct-cost\">€${cost}</span>`;\n     button.disabled = !canAfford;\n     button.classList.toggle('disabled', !canAfford);\n   }\n@@ -870,6 +903,154 @@ export class HeatGameRenderer {\n     this.updateSecretMenu();\n   }\n \n+  private getUpgradeEffectDisplay(type: UpgradeType, level: number): { current: string; next: string; description: string } {\n+    const def = UPGRADE_DEFINITIONS[type];\n+    const isMaxed = def.maxLevel > 0 && level >= def.maxLevel;\n+\n+    switch (type) {\n+      case UpgradeType.FuelHeatOutput: {\n+        // Fuel heat output: base + (level * improvement)\n+        const baseHeat = STRUCTURE_BASE_STATS[StructureType.FuelRod].heatGeneration;\n+        const currentBonus = level * def.improvementPerLevel;\n+        const nextBonus = (level + 1) * def.improvementPerLevel;\n+        return {\n+          description: 'Fuel rod heat output',\n+          current: `+${currentBonus} heat`,\n+          next: isMaxed ? 'MAX' : `+${nextBonus} heat`,\n+        };\n+      }\n+      case UpgradeType.FuelLifetime: {\n+        const currentBonus = level * def.improvementPerLevel;\n+        const nextBonus = (level + 1) * def.improvementPerLevel;\n+        return {\n+          description: 'Fuel rod lifetime bonus',\n+          current: `+${currentBonus} ticks`,\n+          next: isMaxed ? 'MAX' : `+${nextBonus} ticks`,\n+        };\n+      }\n+      case UpgradeType.TurbineConductivity: {\n+        const baseCond = STRUCTURE_BASE_STATS[StructureType.Turbine].conductivity;\n+        const current = (baseCond + level * def.improvementPerLevel) * 100;\n+        const next = (baseCond + (level + 1) * def.improvementPerLevel) * 100;\n+        return {\n+          description: 'Turbine heat absorption',\n+          current: `${current.toFixed(0)}%`,\n+          next: isMaxed ? 'MAX' : `${next.toFixed(0)}%`,\n+        };\n+      }\n+      case UpgradeType.InsulatorConductivity: {\n+        const baseCond = STRUCTURE_BASE_STATS[StructureType.Insulator].conductivity;\n+        const current = baseCond * Math.pow(0.5, level) * 100;\n+        const next = baseCond * Math.pow(0.5, level + 1) * 100;\n+        return {\n+          description: 'Insulator heat leak',\n+          current: `${current.toFixed(2)}%`,\n+          next: isMaxed ? 'MAX' : `${next.toFixed(2)}%`,\n+        };\n+      }\n+      case UpgradeType.SubstationSaleRate: {\n+        const base = STRUCTURE_BASE_STATS[StructureType.Substation].powerSaleRate;\n+        const current = base + level * def.improvementPerLevel;\n+        const next = base + (level + 1) * def.improvementPerLevel;\n+        return {\n+          description: 'Substation power sold/tick',\n+          current: `+${level * def.improvementPerLevel}`,\n+          next: isMaxed ? 'MAX' : `+${(level + 1) * def.improvementPerLevel}`,\n+        };\n+      }\n+      case UpgradeType.VentilatorDissipation: {\n+        const currentBonus = level * def.improvementPerLevel;\n+        const nextBonus = (level + 1) * def.improvementPerLevel;\n+        return {\n+          description: 'Ventilator cooling bonus',\n+          current: `+${currentBonus} heat`,\n+          next: isMaxed ? 'MAX' : `+${nextBonus} heat`,\n+        };\n+      }\n+      case UpgradeType.TickSpeed: {\n+        const current = Math.pow(def.improvementPerLevel, level) * 100;\n+        const next = Math.pow(def.improvementPerLevel, level + 1) * 100;\n+        return {\n+          description: 'Tick speed',\n+          current: `${current.toFixed(0)}%`,\n+          next: isMaxed ? 'MAX' : `${next.toFixed(0)}%`,\n+        };\n+      }\n+      case UpgradeType.ManualClickPower: {\n+        const base = 1; // BASE_MONEY_PER_CLICK\n+        const current = base + level * def.improvementPerLevel;\n+        const next = base + (level + 1) * def.improvementPerLevel;\n+        return {\n+          description: 'Money per click',\n+          current: `€${current}`,\n+          next: isMaxed ? 'MAX' : `€${next}`,\n+        };\n+      }\n+      case UpgradeType.MeltTempFuelRod: {\n+        const base = STRUCTURE_BASE_STATS[StructureType.FuelRod].meltTemp;\n+        const current = base + level * def.improvementPerLevel;\n+        const next = base + (level + 1) * def.improvementPerLevel;\n+        return {\n+          description: 'Fuel rod melt temp',\n+          current: `${current}°C`,\n+          next: isMaxed ? 'MAX' : `${next}°C`,\n+        };\n+      }\n+      case UpgradeType.MeltTempVentilator: {\n+        const base = STRUCTURE_BASE_STATS[StructureType.Ventilator].meltTemp;\n+        const current = base + level * def.improvementPerLevel;\n+        const next = base + (level + 1) * def.improvementPerLevel;\n+        return {\n+          description: 'Ventilator melt temp',\n+          current: `${current}°C`,\n+          next: isMaxed ? 'MAX' : `${next}°C`,\n+        };\n+      }\n+      case UpgradeType.MeltTempHeatExchanger: {\n+        const base = STRUCTURE_BASE_STATS[StructureType.HeatExchanger].meltTemp;\n+        const current = base + level * def.improvementPerLevel;\n+        const next = base + (level + 1) * def.improvementPerLevel;\n+        return {\n+          description: 'Heat exchanger melt temp',\n+          current: `${current}°C`,\n+          next: isMaxed ? 'MAX' : `${next}°C`,\n+        };\n+      }\n+      case UpgradeType.MeltTempInsulator: {\n+        const base = STRUCTURE_BASE_STATS[StructureType.Insulator].meltTemp;\n+        const current = base + level * def.improvementPerLevel;\n+        const next = base + (level + 1) * def.improvementPerLevel;\n+        return {\n+          description: 'Insulator melt temp',\n+          current: `${current}°C`,\n+          next: isMaxed ? 'MAX' : `${next}°C`,\n+        };\n+      }\n+      case UpgradeType.MeltTempTurbine: {\n+        const base = STRUCTURE_BASE_STATS[StructureType.Turbine].meltTemp;\n+        const current = base + level * def.improvementPerLevel;\n+        const next = base + (level + 1) * def.improvementPerLevel;\n+        return {\n+          description: 'Turbine melt temp',\n+          current: `${current}°C`,\n+          next: isMaxed ? 'MAX' : `${next}°C`,\n+        };\n+      }\n+      case UpgradeType.MeltTempSubstation: {\n+        const base = STRUCTURE_BASE_STATS[StructureType.Substation].meltTemp;\n+        const current = base + level * def.improvementPerLevel;\n+        const next = base + (level + 1) * def.improvementPerLevel;\n+        return {\n+          description: 'Substation melt temp',\n+          current: `${current}°C`,\n+          next: isMaxed ? 'MAX' : `${next}°C`,\n+        };\n+      }\n+      default:\n+        return { description: '', current: '', next: '' };\n+    }\n+  }\n+\n   private updateUpgradeMenu(): void {\n     const upgradeList = document.getElementById('upgrade-list');\n     if (!upgradeList) return;\n@@ -883,6 +1064,7 @@ export class HeatGameRenderer {\n       const cost = this.game.getUpgradeCost(type);\n       const canAfford = money >= cost;\n       const isMaxed = def.maxLevel > 0 && level >= def.maxLevel;\n+      const effect = this.getUpgradeEffectDisplay(type, level);\n \n       html += `\n         <div class=\"upgrade-item\">\n@@ -890,6 +1072,10 @@ export class HeatGameRenderer {\n             <span class=\"upgrade-name\">${def.name}</span>\n             <span class=\"upgrade-level\">Lv.${level}${def.maxLevel > 0 ? '/' + def.maxLevel : ''}</span>\n           </div>\n+          <div class=\"upgrade-effect\">\n+            <span class=\"effect-desc\">${effect.description}:</span>\n+            <span class=\"effect-values\">${effect.current} → ${effect.next}</span>\n+          </div>\n           <button class=\"upgrade-btn\" data-upgrade=\"${type}\" ${isMaxed || !canAfford ? 'disabled' : ''}>\n             ${isMaxed ? 'MAX' : `€${cost}`}\n           </button>\ndiff --git a/src/game/PhysicsEngine.ts b/src/game/PhysicsEngine.ts\nindex 116345f..540fea3 100644\n--- a/src/game/PhysicsEngine.ts\n+++ b/src/game/PhysicsEngine.ts\n@@ -307,6 +307,79 @@ export class PhysicsEngine {\n     return saleRate;\n   }\n \n+  /**\n+   * Get effective power sale rate for a given tier (with upgrades)\n+   * Used for UI display without an actual cell\n+   */\n+  getEffectivePowerSaleRateForTier(tier: Tier): number {\n+    const baseStats = STRUCTURE_BASE_STATS[StructureType.Substation];\n+    let saleRate = baseStats.powerSaleRate;\n+\n+    saleRate *= Math.pow(10, tier - 1);\n+\n+    const level = this.getUpgradeLevel(UpgradeType.SubstationSaleRate);\n+    const definition = UPGRADE_DEFINITIONS[UpgradeType.SubstationSaleRate];\n+    saleRate += level * definition.improvementPerLevel;\n+\n+    return saleRate;\n+  }\n+\n+  /**\n+   * Get effective heat dissipation for a ventilator at a given tier (with upgrades)\n+   * Used for UI display without an actual cell\n+   */\n+  getEffectiveVentilatorDissipationForTier(tier: Tier): number {\n+    const baseStats = STRUCTURE_BASE_STATS[StructureType.Ventilator];\n+    let dissipation = baseStats.heatDissipation;\n+\n+    dissipation *= Math.pow(10, tier - 1);\n+\n+    const level = this.getUpgradeLevel(UpgradeType.VentilatorDissipation);\n+    const definition = UPGRADE_DEFINITIONS[UpgradeType.VentilatorDissipation];\n+    dissipation += level * definition.improvementPerLevel;\n+\n+    return dissipation;\n+  }\n+\n+  /**\n+   * Get effective heat generation for a fuel rod at a given tier (with upgrades)\n+   * Used for UI display without an actual cell\n+   */\n+  getEffectiveFuelHeatGenerationForTier(tier: Tier): number {\n+    const upgradeLevel = this.getUpgradeLevel(UpgradeType.FuelHeatOutput);\n+    return getFuelHeatGeneration(tier, upgradeLevel);\n+  }\n+\n+  /**\n+   * Get effective power generation for a turbine at a given tier\n+   * Returns power per tick at max heat consumption\n+   */\n+  getEffectiveTurbinePowerForTier(tier: Tier): number {\n+    const baseStats = STRUCTURE_BASE_STATS[StructureType.Turbine];\n+    const maxHeatConsumption = baseStats.maxHeatConsumption * Math.pow(10, tier - 1);\n+    return maxHeatConsumption * baseStats.powerGeneration;\n+  }\n+\n+  /**\n+   * Get effective conductivity for a heat exchanger at a given tier\n+   * Note: Heat exchangers don't scale conductivity with tier, only have base conductivity\n+   */\n+  getEffectiveHeatExchangerConductivity(): number {\n+    return STRUCTURE_BASE_STATS[StructureType.HeatExchanger].conductivity;\n+  }\n+\n+  /**\n+   * Get effective conductivity for an insulator (with upgrades)\n+   */\n+  getEffectiveInsulatorConductivity(): number {\n+    const baseConductivity = STRUCTURE_BASE_STATS[StructureType.Insulator].conductivity;\n+    const level = this.getUpgradeLevel(UpgradeType.InsulatorConductivity);\n+    if (level > 0) {\n+      return baseConductivity * Math.pow(0.5, level);\n+    }\n+    return baseConductivity;\n+  }\n+\n   /**\n    * Process heat generation from fuel rods\n    * Returns the total heat generated this tick",
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "/home/runner/work/claudetest123/claudetest123/test-results",
+        "repeatEach": 1,
+        "retries": 2,
+        "metadata": {
+          "ci": {
+            "commitHref": "https://github.com/bjuergens/claudetest123/commit/ae6de64dd1a1a08655dec87ca12480394b1516d1",
+            "commitHash": "ae6de64dd1a1a08655dec87ca12480394b1516d1",
+            "prHref": "https://github.com/bjuergens/claudetest123/pull/18",
+            "prTitle": "Show effective stats in build and upgrade menus",
+            "prBaseHash": "56813d42f2bf682699c7d33884c3608da600e635",
+            "buildHref": "https://github.com/bjuergens/claudetest123/actions/runs/21559511512"
+          },
+          "gitCommit": {
+            "shortHash": "ae6de64",
+            "hash": "ae6de64dd1a1a08655dec87ca12480394b1516d1",
+            "subject": "Merge 263a73c8914515140129421f81e893de4c03e2a7 into 56813d42f2bf682699c7d33884c3608da600e635",
+            "body": "Merge 263a73c8914515140129421f81e893de4c03e2a7 into 56813d42f2bf682699c7d33884c3608da600e635\n",
+            "author": {
+              "name": "Björn Jürgens",
+              "email": "4362465+bjuergens@users.noreply.github.com",
+              "time": 1769933814000
+            },
+            "committer": {
+              "name": "GitHub",
+              "email": "noreply@github.com",
+              "time": 1769933814000
+            },
+            "branch": "HEAD"
+          },
+          "gitDiff": "diff --git a/deploy/styles.css b/deploy/styles.css\nindex fcdc7cd..b723806 100644\n--- a/deploy/styles.css\n+++ b/deploy/styles.css\n@@ -169,6 +169,12 @@ body {\n     font-size: 0.75rem;\n }\n \n+.build-btn .struct-stat {\n+    color: #ffaa00;\n+    font-size: 0.7rem;\n+    white-space: nowrap;\n+}\n+\n .build-btn .struct-cost {\n     color: #00ff88;\n     font-weight: bold;\n@@ -215,9 +221,10 @@ body {\n }\n \n .upgrade-item {\n-    display: flex;\n-    justify-content: space-between;\n-    align-items: center;\n+    display: grid;\n+    grid-template-columns: 1fr auto;\n+    grid-template-rows: auto auto;\n+    gap: 2px 8px;\n     padding: 6px 8px;\n     background: #333;\n     border-radius: 4px;\n@@ -227,6 +234,8 @@ body {\n     display: flex;\n     flex-direction: column;\n     gap: 2px;\n+    grid-column: 1;\n+    grid-row: 1;\n }\n \n .upgrade-name {\n@@ -239,7 +248,27 @@ body {\n     color: #888;\n }\n \n+.upgrade-effect {\n+    grid-column: 1;\n+    grid-row: 2;\n+    display: flex;\n+    gap: 4px;\n+    font-size: 0.7rem;\n+}\n+\n+.effect-desc {\n+    color: #888;\n+}\n+\n+.effect-values {\n+    color: #ffaa00;\n+    font-weight: bold;\n+}\n+\n .upgrade-btn {\n+    grid-column: 2;\n+    grid-row: 1 / 3;\n+    align-self: center;\n     padding: 4px 10px;\n     border: 2px solid #444;\n     border-radius: 4px;\ndiff --git a/src/game/HeatGame.ts b/src/game/HeatGame.ts\nindex bc741f4..6cfc4fc 100644\n--- a/src/game/HeatGame.ts\n+++ b/src/game/HeatGame.ts\n@@ -296,6 +296,49 @@ export class HeatGame {\n     return this.physicsEngine.getEffectivePowerSaleRate(cell);\n   }\n \n+  /**\n+   * Get effective power sale rate for a given tier (with upgrades)\n+   * Used for UI display without an actual cell\n+   */\n+  getEffectivePowerSaleRateForTier(tier: Tier): number {\n+    return this.physicsEngine.getEffectivePowerSaleRateForTier(tier);\n+  }\n+\n+  /**\n+   * Get effective heat dissipation for a ventilator at a given tier (with upgrades)\n+   */\n+  getEffectiveVentilatorDissipationForTier(tier: Tier): number {\n+    return this.physicsEngine.getEffectiveVentilatorDissipationForTier(tier);\n+  }\n+\n+  /**\n+   * Get effective heat generation for a fuel rod at a given tier (with upgrades)\n+   */\n+  getEffectiveFuelHeatGenerationForTier(tier: Tier): number {\n+    return this.physicsEngine.getEffectiveFuelHeatGenerationForTier(tier);\n+  }\n+\n+  /**\n+   * Get effective power generation for a turbine at a given tier\n+   */\n+  getEffectiveTurbinePowerForTier(tier: Tier): number {\n+    return this.physicsEngine.getEffectiveTurbinePowerForTier(tier);\n+  }\n+\n+  /**\n+   * Get effective conductivity for a heat exchanger\n+   */\n+  getEffectiveHeatExchangerConductivity(): number {\n+    return this.physicsEngine.getEffectiveHeatExchangerConductivity();\n+  }\n+\n+  /**\n+   * Get effective conductivity for an insulator (with upgrades)\n+   */\n+  getEffectiveInsulatorConductivity(): number {\n+    return this.physicsEngine.getEffectiveInsulatorConductivity();\n+  }\n+\n   // ==========================================================================\n   // MANUAL POWER GENERATION (Clicker)\n   // ==========================================================================\ndiff --git a/src/game/HeatGameRenderer.ts b/src/game/HeatGameRenderer.ts\nindex 827fca7..dfdc423 100644\n--- a/src/game/HeatGameRenderer.ts\n+++ b/src/game/HeatGameRenderer.ts\n@@ -659,9 +659,10 @@ export class HeatGameRenderer {\n       // Buy button\n       const tier = this.structureTiers.get(structure) || Tier.T1;\n       const cost = getStructureCost(structure, tier);\n+      const effectiveStat = this.getEffectiveStatDisplay(structure, tier);\n       const buyBtn = document.createElement('button');\n       buyBtn.className = 'build-btn';\n-      buyBtn.innerHTML = `<span class=\"struct-symbol\">${STRUCTURE_SYMBOLS[structure]}</span> <span class=\"struct-name\">${stats.name}</span> <span class=\"struct-tier\">T${tier}</span> <span class=\"struct-cost\">€${cost}</span>`;\n+      buyBtn.innerHTML = `<span class=\"struct-symbol\">${STRUCTURE_SYMBOLS[structure]}</span> <span class=\"struct-name\">${stats.name}</span> <span class=\"struct-tier\">T${tier}</span> <span class=\"struct-stat\">${effectiveStat}</span> <span class=\"struct-cost\">€${cost}</span>`;\n       buyBtn.dataset.structure = structure;\n       buyBtn.addEventListener('click', () => {\n         this.selectedTier = this.structureTiers.get(structure) || Tier.T1;\n@@ -693,6 +694,37 @@ export class HeatGameRenderer {\n     }\n   }\n \n+  private getEffectiveStatDisplay(structure: StructureType, tier: Tier): string {\n+    switch (structure) {\n+      case StructureType.FuelRod: {\n+        const heat = this.game.getEffectiveFuelHeatGenerationForTier(tier);\n+        return `${heat} heat/tick`;\n+      }\n+      case StructureType.Turbine: {\n+        const power = this.game.getEffectiveTurbinePowerForTier(tier);\n+        return `${power.toFixed(1)} power/tick`;\n+      }\n+      case StructureType.Substation: {\n+        const saleRate = this.game.getEffectivePowerSaleRateForTier(tier);\n+        return `€${saleRate.toFixed(1)}/tick`;\n+      }\n+      case StructureType.Ventilator: {\n+        const dissipation = this.game.getEffectiveVentilatorDissipationForTier(tier);\n+        return `-${dissipation} heat/tick`;\n+      }\n+      case StructureType.HeatExchanger: {\n+        const conductivity = this.game.getEffectiveHeatExchangerConductivity();\n+        return `${(conductivity * 100).toFixed(0)}% conductivity`;\n+      }\n+      case StructureType.Insulator: {\n+        const meltTemp = this.game.getEffectiveMeltTemp(structure);\n+        return `${meltTemp}°C melt`;\n+      }\n+      default:\n+        return '';\n+    }\n+  }\n+\n   private updateBuildButton(structure: StructureType): void {\n     const button = this.buildButtons.get(structure);\n     if (!button) return;\n@@ -701,8 +733,9 @@ export class HeatGameRenderer {\n     const tier = this.structureTiers.get(structure) || Tier.T1;\n     const cost = getStructureCost(structure, tier);\n     const canAfford = this.game.getMoney() >= cost;\n+    const effectiveStat = this.getEffectiveStatDisplay(structure, tier);\n \n-    button.innerHTML = `<span class=\"struct-symbol\">${STRUCTURE_SYMBOLS[structure]}</span> <span class=\"struct-name\">${stats.name}</span> <span class=\"struct-tier\">T${tier}</span> <span class=\"struct-cost\">€${cost}</span>`;\n+    button.innerHTML = `<span class=\"struct-symbol\">${STRUCTURE_SYMBOLS[structure]}</span> <span class=\"struct-name\">${stats.name}</span> <span class=\"struct-tier\">T${tier}</span> <span class=\"struct-stat\">${effectiveStat}</span> <span class=\"struct-cost\">€${cost}</span>`;\n     button.disabled = !canAfford;\n     button.classList.toggle('disabled', !canAfford);\n   }\n@@ -870,6 +903,154 @@ export class HeatGameRenderer {\n     this.updateSecretMenu();\n   }\n \n+  private getUpgradeEffectDisplay(type: UpgradeType, level: number): { current: string; next: string; description: string } {\n+    const def = UPGRADE_DEFINITIONS[type];\n+    const isMaxed = def.maxLevel > 0 && level >= def.maxLevel;\n+\n+    switch (type) {\n+      case UpgradeType.FuelHeatOutput: {\n+        // Fuel heat output: base + (level * improvement)\n+        const baseHeat = STRUCTURE_BASE_STATS[StructureType.FuelRod].heatGeneration;\n+        const currentBonus = level * def.improvementPerLevel;\n+        const nextBonus = (level + 1) * def.improvementPerLevel;\n+        return {\n+          description: 'Fuel rod heat output',\n+          current: `+${currentBonus} heat`,\n+          next: isMaxed ? 'MAX' : `+${nextBonus} heat`,\n+        };\n+      }\n+      case UpgradeType.FuelLifetime: {\n+        const currentBonus = level * def.improvementPerLevel;\n+        const nextBonus = (level + 1) * def.improvementPerLevel;\n+        return {\n+          description: 'Fuel rod lifetime bonus',\n+          current: `+${currentBonus} ticks`,\n+          next: isMaxed ? 'MAX' : `+${nextBonus} ticks`,\n+        };\n+      }\n+      case UpgradeType.TurbineConductivity: {\n+        const baseCond = STRUCTURE_BASE_STATS[StructureType.Turbine].conductivity;\n+        const current = (baseCond + level * def.improvementPerLevel) * 100;\n+        const next = (baseCond + (level + 1) * def.improvementPerLevel) * 100;\n+        return {\n+          description: 'Turbine heat absorption',\n+          current: `${current.toFixed(0)}%`,\n+          next: isMaxed ? 'MAX' : `${next.toFixed(0)}%`,\n+        };\n+      }\n+      case UpgradeType.InsulatorConductivity: {\n+        const baseCond = STRUCTURE_BASE_STATS[StructureType.Insulator].conductivity;\n+        const current = baseCond * Math.pow(0.5, level) * 100;\n+        const next = baseCond * Math.pow(0.5, level + 1) * 100;\n+        return {\n+          description: 'Insulator heat leak',\n+          current: `${current.toFixed(2)}%`,\n+          next: isMaxed ? 'MAX' : `${next.toFixed(2)}%`,\n+        };\n+      }\n+      case UpgradeType.SubstationSaleRate: {\n+        const base = STRUCTURE_BASE_STATS[StructureType.Substation].powerSaleRate;\n+        const current = base + level * def.improvementPerLevel;\n+        const next = base + (level + 1) * def.improvementPerLevel;\n+        return {\n+          description: 'Substation power sold/tick',\n+          current: `+${level * def.improvementPerLevel}`,\n+          next: isMaxed ? 'MAX' : `+${(level + 1) * def.improvementPerLevel}`,\n+        };\n+      }\n+      case UpgradeType.VentilatorDissipation: {\n+        const currentBonus = level * def.improvementPerLevel;\n+        const nextBonus = (level + 1) * def.improvementPerLevel;\n+        return {\n+          description: 'Ventilator cooling bonus',\n+          current: `+${currentBonus} heat`,\n+          next: isMaxed ? 'MAX' : `+${nextBonus} heat`,\n+        };\n+      }\n+      case UpgradeType.TickSpeed: {\n+        const current = Math.pow(def.improvementPerLevel, level) * 100;\n+        const next = Math.pow(def.improvementPerLevel, level + 1) * 100;\n+        return {\n+          description: 'Tick speed',\n+          current: `${current.toFixed(0)}%`,\n+          next: isMaxed ? 'MAX' : `${next.toFixed(0)}%`,\n+        };\n+      }\n+      case UpgradeType.ManualClickPower: {\n+        const base = 1; // BASE_MONEY_PER_CLICK\n+        const current = base + level * def.improvementPerLevel;\n+        const next = base + (level + 1) * def.improvementPerLevel;\n+        return {\n+          description: 'Money per click',\n+          current: `€${current}`,\n+          next: isMaxed ? 'MAX' : `€${next}`,\n+        };\n+      }\n+      case UpgradeType.MeltTempFuelRod: {\n+        const base = STRUCTURE_BASE_STATS[StructureType.FuelRod].meltTemp;\n+        const current = base + level * def.improvementPerLevel;\n+        const next = base + (level + 1) * def.improvementPerLevel;\n+        return {\n+          description: 'Fuel rod melt temp',\n+          current: `${current}°C`,\n+          next: isMaxed ? 'MAX' : `${next}°C`,\n+        };\n+      }\n+      case UpgradeType.MeltTempVentilator: {\n+        const base = STRUCTURE_BASE_STATS[StructureType.Ventilator].meltTemp;\n+        const current = base + level * def.improvementPerLevel;\n+        const next = base + (level + 1) * def.improvementPerLevel;\n+        return {\n+          description: 'Ventilator melt temp',\n+          current: `${current}°C`,\n+          next: isMaxed ? 'MAX' : `${next}°C`,\n+        };\n+      }\n+      case UpgradeType.MeltTempHeatExchanger: {\n+        const base = STRUCTURE_BASE_STATS[StructureType.HeatExchanger].meltTemp;\n+        const current = base + level * def.improvementPerLevel;\n+        const next = base + (level + 1) * def.improvementPerLevel;\n+        return {\n+          description: 'Heat exchanger melt temp',\n+          current: `${current}°C`,\n+          next: isMaxed ? 'MAX' : `${next}°C`,\n+        };\n+      }\n+      case UpgradeType.MeltTempInsulator: {\n+        const base = STRUCTURE_BASE_STATS[StructureType.Insulator].meltTemp;\n+        const current = base + level * def.improvementPerLevel;\n+        const next = base + (level + 1) * def.improvementPerLevel;\n+        return {\n+          description: 'Insulator melt temp',\n+          current: `${current}°C`,\n+          next: isMaxed ? 'MAX' : `${next}°C`,\n+        };\n+      }\n+      case UpgradeType.MeltTempTurbine: {\n+        const base = STRUCTURE_BASE_STATS[StructureType.Turbine].meltTemp;\n+        const current = base + level * def.improvementPerLevel;\n+        const next = base + (level + 1) * def.improvementPerLevel;\n+        return {\n+          description: 'Turbine melt temp',\n+          current: `${current}°C`,\n+          next: isMaxed ? 'MAX' : `${next}°C`,\n+        };\n+      }\n+      case UpgradeType.MeltTempSubstation: {\n+        const base = STRUCTURE_BASE_STATS[StructureType.Substation].meltTemp;\n+        const current = base + level * def.improvementPerLevel;\n+        const next = base + (level + 1) * def.improvementPerLevel;\n+        return {\n+          description: 'Substation melt temp',\n+          current: `${current}°C`,\n+          next: isMaxed ? 'MAX' : `${next}°C`,\n+        };\n+      }\n+      default:\n+        return { description: '', current: '', next: '' };\n+    }\n+  }\n+\n   private updateUpgradeMenu(): void {\n     const upgradeList = document.getElementById('upgrade-list');\n     if (!upgradeList) return;\n@@ -883,6 +1064,7 @@ export class HeatGameRenderer {\n       const cost = this.game.getUpgradeCost(type);\n       const canAfford = money >= cost;\n       const isMaxed = def.maxLevel > 0 && level >= def.maxLevel;\n+      const effect = this.getUpgradeEffectDisplay(type, level);\n \n       html += `\n         <div class=\"upgrade-item\">\n@@ -890,6 +1072,10 @@ export class HeatGameRenderer {\n             <span class=\"upgrade-name\">${def.name}</span>\n             <span class=\"upgrade-level\">Lv.${level}${def.maxLevel > 0 ? '/' + def.maxLevel : ''}</span>\n           </div>\n+          <div class=\"upgrade-effect\">\n+            <span class=\"effect-desc\">${effect.description}:</span>\n+            <span class=\"effect-values\">${effect.current} → ${effect.next}</span>\n+          </div>\n           <button class=\"upgrade-btn\" data-upgrade=\"${type}\" ${isMaxed || !canAfford ? 'disabled' : ''}>\n             ${isMaxed ? 'MAX' : `€${cost}`}\n           </button>\ndiff --git a/src/game/PhysicsEngine.ts b/src/game/PhysicsEngine.ts\nindex 116345f..540fea3 100644\n--- a/src/game/PhysicsEngine.ts\n+++ b/src/game/PhysicsEngine.ts\n@@ -307,6 +307,79 @@ export class PhysicsEngine {\n     return saleRate;\n   }\n \n+  /**\n+   * Get effective power sale rate for a given tier (with upgrades)\n+   * Used for UI display without an actual cell\n+   */\n+  getEffectivePowerSaleRateForTier(tier: Tier): number {\n+    const baseStats = STRUCTURE_BASE_STATS[StructureType.Substation];\n+    let saleRate = baseStats.powerSaleRate;\n+\n+    saleRate *= Math.pow(10, tier - 1);\n+\n+    const level = this.getUpgradeLevel(UpgradeType.SubstationSaleRate);\n+    const definition = UPGRADE_DEFINITIONS[UpgradeType.SubstationSaleRate];\n+    saleRate += level * definition.improvementPerLevel;\n+\n+    return saleRate;\n+  }\n+\n+  /**\n+   * Get effective heat dissipation for a ventilator at a given tier (with upgrades)\n+   * Used for UI display without an actual cell\n+   */\n+  getEffectiveVentilatorDissipationForTier(tier: Tier): number {\n+    const baseStats = STRUCTURE_BASE_STATS[StructureType.Ventilator];\n+    let dissipation = baseStats.heatDissipation;\n+\n+    dissipation *= Math.pow(10, tier - 1);\n+\n+    const level = this.getUpgradeLevel(UpgradeType.VentilatorDissipation);\n+    const definition = UPGRADE_DEFINITIONS[UpgradeType.VentilatorDissipation];\n+    dissipation += level * definition.improvementPerLevel;\n+\n+    return dissipation;\n+  }\n+\n+  /**\n+   * Get effective heat generation for a fuel rod at a given tier (with upgrades)\n+   * Used for UI display without an actual cell\n+   */\n+  getEffectiveFuelHeatGenerationForTier(tier: Tier): number {\n+    const upgradeLevel = this.getUpgradeLevel(UpgradeType.FuelHeatOutput);\n+    return getFuelHeatGeneration(tier, upgradeLevel);\n+  }\n+\n+  /**\n+   * Get effective power generation for a turbine at a given tier\n+   * Returns power per tick at max heat consumption\n+   */\n+  getEffectiveTurbinePowerForTier(tier: Tier): number {\n+    const baseStats = STRUCTURE_BASE_STATS[StructureType.Turbine];\n+    const maxHeatConsumption = baseStats.maxHeatConsumption * Math.pow(10, tier - 1);\n+    return maxHeatConsumption * baseStats.powerGeneration;\n+  }\n+\n+  /**\n+   * Get effective conductivity for a heat exchanger at a given tier\n+   * Note: Heat exchangers don't scale conductivity with tier, only have base conductivity\n+   */\n+  getEffectiveHeatExchangerConductivity(): number {\n+    return STRUCTURE_BASE_STATS[StructureType.HeatExchanger].conductivity;\n+  }\n+\n+  /**\n+   * Get effective conductivity for an insulator (with upgrades)\n+   */\n+  getEffectiveInsulatorConductivity(): number {\n+    const baseConductivity = STRUCTURE_BASE_STATS[StructureType.Insulator].conductivity;\n+    const level = this.getUpgradeLevel(UpgradeType.InsulatorConductivity);\n+    if (level > 0) {\n+      return baseConductivity * Math.pow(0.5, level);\n+    }\n+    return baseConductivity;\n+  }\n+\n   /**\n    * Process heat generation from fuel rods\n    * Returns the total heat generated this tick",
+          "actualWorkers": 1
+        },
+        "id": "chromium",
+        "name": "chromium",
+        "testDir": "/home/runner/work/claudetest123/claudetest123/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 30000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "html",
+        {
+          "outputFolder": "playwright-report"
+        }
+      ],
+      [
+        "list",
+        null
+      ],
+      [
+        "json",
+        {
+          "outputFile": "test-results/results.json"
+        }
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "runAgents": "none",
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.58.0",
+    "workers": 1,
+    "webServer": {
+      "command": "npm run serve",
+      "url": "http://localhost:3000",
+      "reuseExistingServer": false,
+      "timeout": 120000
+    }
+  },
+  "suites": [
+    {
+      "title": "heat-game.spec.ts",
+      "file": "heat-game.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Heat Game E2E Tests",
+          "file": "heat-game.spec.ts",
+          "line": 40,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should load the game and display initial state",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 649,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-01T08:17:41.607Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-2428b-e-and-display-initial-state-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-2428b-e-and-display-initial-state-chromium/attachments/browser-logs-252e98eebb6d2a6fd5612fd184955e74f7d8fa0e.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-1f7f90ca45f76c134f4d",
+              "file": "heat-game.spec.ts",
+              "line": 86,
+              "column": 3
+            },
+            {
+              "title": "should place a Fuel Rod on the grid",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 859,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-01T08:17:44.136Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-05fff-lace-a-Fuel-Rod-on-the-grid-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-05fff-lace-a-Fuel-Rod-on-the-grid-chromium/attachments/browser-logs-daa597c1e58cdd3735064670bc098a56f535a7d5.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-a31bde006f3c29450fad",
+              "file": "heat-game.spec.ts",
+              "line": 116,
+              "column": 3
+            },
+            {
+              "title": "should place multiple structures and observe heat dynamics",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1400,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-01T08:17:45.010Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-edba4-s-and-observe-heat-dynamics-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-edba4-s-and-observe-heat-dynamics-chromium/attachments/browser-logs-a9526112523c68aa24fe78334be3ec2af4a1ba62.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-2ed04ebe32d9c471053a",
+              "file": "heat-game.spec.ts",
+              "line": 148,
+              "column": 3
+            },
+            {
+              "title": "should demolish a structure with right-click",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 747,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-01T08:17:46.426Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-53724--structure-with-right-click-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-53724--structure-with-right-click-chromium/attachments/browser-logs-d97b4f4e87a5cc31e1b5dee61d33b7cf6ee7bb2f.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-ff211d87a2ad19067056",
+              "file": "heat-game.spec.ts",
+              "line": 185,
+              "column": 3
+            },
+            {
+              "title": "should build a power generation setup",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1934,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-01T08:17:47.189Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-206ae-ld-a-power-generation-setup-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-206ae-ld-a-power-generation-setup-chromium/attachments/browser-logs-6db27ca250b3a1a4083663dd5a90aeedb0e1a354.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-abe0096aa1a1c45a3b34",
+              "file": "heat-game.spec.ts",
+              "line": 219,
+              "column": 3
+            },
+            {
+              "title": "should show heat buildup with clustered fuel rods",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1828,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-01T08:17:49.137Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-1ce31-up-with-clustered-fuel-rods-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-1ce31-up-with-clustered-fuel-rods-chromium/attachments/browser-logs-4108f70a5376472a80710ba1c287f526e1cfc9b4.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-ac87d21624a439db98b8",
+              "file": "heat-game.spec.ts",
+              "line": 256,
+              "column": 3
+            },
+            {
+              "title": "should not allow building without sufficient money",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1697,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-01T08:17:50.979Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-ee0f6-ng-without-sufficient-money-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-ee0f6-ng-without-sufficient-money-chromium/attachments/browser-logs-67852c21b9cbe344288f7cfb81aa3e88ded21441.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-b096005e15a85f67c2a8",
+              "file": "heat-game.spec.ts",
+              "line": 294,
+              "column": 3
+            },
+            {
+              "title": "should handle rapid clicking on the grid",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1437,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-01T08:17:52.691Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-c664c--rapid-clicking-on-the-grid-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-c664c--rapid-clicking-on-the-grid-chromium/attachments/browser-logs-8830c25d0c901f07d14f24299509ec6ff3fc0a0b.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-1b3f7a34798ed668be9c",
+              "file": "heat-game.spec.ts",
+              "line": 336,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-02-01T08:17:35.652Z",
+    "duration": 18548.847,
+    "expected": 8,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}
