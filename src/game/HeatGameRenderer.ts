@@ -719,6 +719,18 @@ export class HeatGameRenderer {
     upgradeList.className = 'upgrade-list';
     upgradeList.id = 'upgrade-list';
     this.upgradeMenu.appendChild(upgradeList);
+
+    // Use event delegation - single listener on parent
+    upgradeList.addEventListener('click', (e) => {
+      const target = e.target as HTMLElement;
+      const btn = target.closest('.upgrade-btn') as HTMLButtonElement | null;
+      if (!btn || btn.disabled) return;
+
+      const upgradeType = btn.dataset.upgrade as UpgradeType;
+      if (upgradeType && this.game.canPurchaseUpgrade(upgradeType)) {
+        this.game.purchaseUpgrade(upgradeType);
+      }
+    });
   }
 
   private createSecretMenu(): void {
@@ -733,6 +745,31 @@ export class HeatGameRenderer {
     secretList.className = 'secret-list';
     secretList.id = 'secret-list';
     this.secretMenu.appendChild(secretList);
+
+    // Use event delegation - single listener on parent
+    secretList.addEventListener('click', (e) => {
+      const target = e.target as HTMLElement;
+
+      // Handle purchase button
+      const secretBtn = target.closest('.secret-btn') as HTMLButtonElement | null;
+      if (secretBtn && !secretBtn.disabled) {
+        const secretType = secretBtn.dataset.secret as SecretUpgradeType;
+        if (secretType && this.game.canPurchaseSecret(secretType)) {
+          this.game.purchaseSecret(secretType);
+        }
+        return;
+      }
+
+      // Handle toggle button
+      const toggleBtn = target.closest('.toggle-btn') as HTMLButtonElement | null;
+      if (toggleBtn) {
+        const secretType = toggleBtn.dataset.secret as SecretUpgradeType;
+        if (secretType) {
+          const isEnabled = this.game.isSecretEnabled(secretType);
+          this.game.toggleSecret(secretType, !isEnabled);
+        }
+      }
+    });
   }
 
   private createOptionsMenu(): void {
@@ -861,17 +898,6 @@ export class HeatGameRenderer {
     }
 
     upgradeList.innerHTML = html;
-
-    // Add click handlers
-    upgradeList.querySelectorAll('.upgrade-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const upgradeType = (btn as HTMLElement).dataset.upgrade as UpgradeType;
-        if (upgradeType && this.game.canPurchaseUpgrade(upgradeType)) {
-          this.game.purchaseUpgrade(upgradeType);
-          this.updateUpgradeMenu();
-        }
-      });
-    });
   }
 
   private updateSecretMenu(): void {
@@ -917,29 +943,6 @@ export class HeatGameRenderer {
     }
 
     secretList.innerHTML = html;
-
-    // Add click handlers for purchase
-    secretList.querySelectorAll('.secret-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const secretType = (btn as HTMLElement).dataset.secret as SecretUpgradeType;
-        if (secretType && this.game.canPurchaseSecret(secretType)) {
-          this.game.purchaseSecret(secretType);
-          this.updateSecretMenu();
-        }
-      });
-    });
-
-    // Add click handlers for toggle
-    secretList.querySelectorAll('.toggle-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const secretType = (btn as HTMLElement).dataset.secret as SecretUpgradeType;
-        if (secretType) {
-          const isEnabled = this.game.isSecretEnabled(secretType);
-          this.game.toggleSecret(secretType, !isEnabled);
-          this.updateSecretMenu();
-        }
-      });
-    });
   }
 
   private showMeltdownAnimation(): void {
