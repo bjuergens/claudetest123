@@ -1,0 +1,512 @@
+{
+  "config": {
+    "configFile": "/home/runner/work/claudetest123/claudetest123/playwright.config.ts",
+    "rootDir": "/home/runner/work/claudetest123/claudetest123/e2e",
+    "forbidOnly": true,
+    "fullyParallel": true,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "ci": {
+        "commitHref": "https://github.com/bjuergens/claudetest123/commit/2c6314781ea9203d318062996204998f067c2987",
+        "commitHash": "2c6314781ea9203d318062996204998f067c2987",
+        "prHref": "https://github.com/bjuergens/claudetest123/pull/19",
+        "prTitle": "Add architecture review document",
+        "prBaseHash": "25cda124d881a8913f4eb9b36114cc294e7bb6a2",
+        "buildHref": "https://github.com/bjuergens/claudetest123/actions/runs/21568183732"
+      },
+      "gitCommit": {
+        "shortHash": "2c63147",
+        "hash": "2c6314781ea9203d318062996204998f067c2987",
+        "subject": "Merge 04a0ad25d46528f6d06c0d82597149f3e1891c56 into 25cda124d881a8913f4eb9b36114cc294e7bb6a2",
+        "body": "Merge 04a0ad25d46528f6d06c0d82597149f3e1891c56 into 25cda124d881a8913f4eb9b36114cc294e7bb6a2\n",
+        "author": {
+          "name": "Björn Jürgens",
+          "email": "4362465+bjuergens@users.noreply.github.com",
+          "time": 1769971283000
+        },
+        "committer": {
+          "name": "GitHub",
+          "email": "noreply@github.com",
+          "time": 1769971283000
+        },
+        "branch": "HEAD"
+      },
+      "gitDiff": "diff --git a/ARCHITECTURE_REVIEW.md b/ARCHITECTURE_REVIEW.md\nnew file mode 100644\nindex 0000000..1504d53\n--- /dev/null\n+++ b/ARCHITECTURE_REVIEW.md\n@@ -0,0 +1,368 @@\n+# Architecture Review: Heat Management Game\n+\n+**Review Date:** 2026-02-01\n+**Scope:** Complexity, data flows, event flows, redundancy, patterns\n+\n+---\n+\n+## Executive Summary\n+\n+The codebase is well-structured with clear separation of concerns. However, there are several areas where complexity can be reduced, redundant patterns eliminated, and consistency improved.\n+\n+### Key Findings:\n+1. **Stats duplication** - PhysicsEngine and HeatGame both track same stats, synced every tick\n+2. **Triple event system** - Three nearly identical event listener patterns\n+3. **Excessive secret checking** - Called on every tick, build, demolish, meltdown\n+4. **Dead code** - `STRUCTURE_COLORS` unused (replaced by HSV colors)\n+5. **Switch statement explosion** - Could be table-driven\n+\n+---\n+\n+## 1. COMPLEXITY HOTSPOTS\n+\n+### 1.1 PhysicsEngine.ts - Melt Temp Upgrade Mapping (lines 214-221)\n+\n+**Current:**\n+```typescript\n+let upgradeType: UpgradeType | null = null;\n+switch (structure) {\n+  case StructureType.FuelRod: upgradeType = UpgradeType.MeltTempFuelRod; break;\n+  case StructureType.Ventilator: upgradeType = UpgradeType.MeltTempVentilator; break;\n+  // ... 6 cases\n+}\n+```\n+\n+**Simplify to:**\n+```typescript\n+const MELT_TEMP_UPGRADES: Partial<Record<StructureType, UpgradeType>> = {\n+  [StructureType.FuelRod]: UpgradeType.MeltTempFuelRod,\n+  [StructureType.Ventilator]: UpgradeType.MeltTempVentilator,\n+  // ...\n+};\n+const upgradeType = MELT_TEMP_UPGRADES[structure];\n+```\n+\n+### 1.2 HeatGameRenderer.ts - getUpgradeEffectDisplay() (lines 925-1070)\n+\n+**Problem:** 150-line switch statement with repeated patterns.\n+\n+**Simplify:** Create a configuration object:\n+```typescript\n+const UPGRADE_EFFECT_CONFIG: Record<UpgradeType, {\n+  description: string;\n+  getValues: (level: number, def: UpgradeDefinition) => { current: string; next: string };\n+}> = { ... };\n+```\n+\n+### 1.3 Duplicate \"ForTier\" Methods in PhysicsEngine\n+\n+These methods have identical patterns:\n+- `getEffectivePowerSaleRateForTier()`\n+- `getEffectiveVentilatorDissipationForTier()`\n+- `getEffectiveFuelHeatGenerationForTier()`\n+- `getEffectiveTurbinePowerForTier()`\n+\n+**Consider:** A single generic method with structure type parameter, or move to BalanceConfig as helper functions.\n+\n+### 1.4 HeatGame.ts - Pass-through Getters (lines 211-340)\n+\n+**30+ getters** that just delegate to sub-components:\n+```typescript\n+getUpgradeLevel(type) { return this.upgradeManager.getUpgradeLevel(type); }\n+isSecretUnlocked(type) { return this.upgradeManager.isSecretUnlocked(type); }\n+// ... many more\n+```\n+\n+**Question:** Does UI need these all through HeatGame, or can it access managers directly?\n+\n+---\n+\n+## 2. REDUNDANT DATA\n+\n+### 2.1 Stats Tracked in Two Places\n+\n+**PhysicsStats** (PhysicsEngine.ts:38-47):\n+- `totalPowerGenerated`\n+- `totalMoneyEarned`\n+- `fuelRodsDepleted`\n+- `ticksAtHighHeat`\n+- `fuelRodsDepletedCool`\n+- `fuelRodsDepletedIce`\n+\n+**GameStats** (HeatGame.ts:43-55):\n+- Same fields, plus `meltdownCount`, `tickCount`, etc.\n+\n+**Current Flow:**\n+```\n+PhysicsEngine.tick() → updates PhysicsStats\n+HeatGame.tick() → syncs from PhysicsStats to GameStats (lines 550-555)\n+```\n+\n+**Problem:** Two sources of truth, synced every tick.\n+\n+**Recommendation:**\n+- Option A: PhysicsEngine owns physics stats, HeatGame owns game stats, no duplication\n+- Option B: Single Stats object shared/passed around\n+\n+### 2.2 Grid Snapshots Created Multiple Times\n+\n+- `render()` → `getGridSnapshot()` (full grid copy)\n+- `getCellTooltip()` → `getCell()` (single cell copy)\n+- Every render creates a full grid snapshot even for static grids\n+\n+**Recommendation:** Consider dirty-flagging or direct grid access for read-only rendering.\n+\n+---\n+\n+## 3. EVENT SYSTEM ISSUES\n+\n+### 3.1 Triple Event System Pattern\n+\n+Three nearly identical implementations:\n+- `GameEventListener` / `eventListeners[]` in HeatGame.ts\n+- `PhysicsEventListener` / `eventListeners[]` in PhysicsEngine.ts\n+- `UpgradeEventListener` / `eventListeners[]` in UpgradeManager.ts\n+\n+Each has identical `addEventListener()`, `removeEventListener()`, `emitEvent()` methods.\n+\n+**Recommendation:** Extract to a shared `EventEmitter<T>` class:\n+```typescript\n+class EventEmitter<T> {\n+  private listeners: ((event: T) => void)[] = [];\n+  on(listener: (event: T) => void) { ... }\n+  off(listener: (event: T) => void) { ... }\n+  emit(event: T) { ... }\n+}\n+```\n+\n+### 3.2 Event Forwarding Chain\n+\n+**Current Flow:**\n+```\n+PhysicsEngine emits 'meltdown'\n+  → HeatGame listener catches it (line 167)\n+  → HeatGame increments meltdownCount\n+  → HeatGame emits 'meltdown' to its listeners\n+  → Renderer catches it for animation\n+```\n+\n+**Double-handling:** Events are caught, re-emitted, caught again.\n+\n+**Alternative:** Single event bus that all components publish/subscribe to.\n+\n+### 3.3 Double-Tapped Events - checkSecretUnlocks()\n+\n+Called from:\n+1. `build()` (line 433)\n+2. `demolish()` (line 459)\n+3. After meltdown event (line 170)\n+4. `tick()` (line 562)\n+\n+**Per tick:** Called at least once, often more if building/demolishing.\n+\n+**Problem:** Most calls find nothing changed. Checking all secrets every time is wasteful.\n+\n+**Recommendation:** Only check when relevant stats change:\n+```typescript\n+// In tick(), after syncing stats:\n+if (physicsStats.fuelRodsDepleted !== previousFuelRodsDepleted) {\n+  this.checkSecretUnlocks();\n+}\n+```\n+\n+---\n+\n+## 4. DEAD CODE / UNUSED\n+\n+### 4.1 STRUCTURE_COLORS in HeatGameRenderer.ts (lines 107-116)\n+\n+```typescript\n+const STRUCTURE_COLORS: Record<StructureType, string> = {\n+  [StructureType.Empty]: '#2a2a2a',\n+  [StructureType.FuelRod]: '#ff6b00',\n+  // ...\n+};\n+```\n+\n+**Never used.** Rendering uses `getStructureHsvColor()` instead (line 346).\n+\n+**Action:** Delete `STRUCTURE_COLORS`.\n+\n+### 4.2 Backward Compatibility Exports (HeatGame.ts)\n+\n+```typescript\n+/** @deprecated Use getGridSize() instead */\n+get GRID_SIZE(): number { ... }\n+\n+export { CORE_SETTINGS };\n+export const GRID_SIZE = CORE_SETTINGS.INITIAL_GRID_SIZE;\n+```\n+\n+**Question:** Is anything still using these? If not, remove.\n+\n+---\n+\n+## 5. EDGE CASE HANDLING NOT NEEDED\n+\n+### 5.1 Redundant Bounds Checking\n+\n+`GridManager.getCell()` checks `isValidPosition()`, but callers often check again:\n+\n+```typescript\n+// HeatGame.build()\n+const cell = this.gridManager.getCellRef(x, y)!;  // Force unwrap - trusts prior canBuild check\n+```\n+\n+**Pattern:** Sometimes trusts prior check, sometimes re-checks. Be consistent.\n+\n+### 5.2 Heat Balance Verification (PhysicsEngine.ts:795-813)\n+\n+```typescript\n+if (!isBalanced) {\n+  console.warn(`[PhysicsEngine] Heat balance violation detected!...`);\n+}\n+```\n+\n+**Question:** Is this debug-only code? Either:\n+- Remove for production (trust the math)\n+- Make it a test/debug mode flag\n+\n+---\n+\n+## 6. INCONSISTENT PATTERNS\n+\n+### 6.1 Upgrade Queries\n+\n+PhysicsEngine gets upgrade info via callbacks:\n+```typescript\n+constructor(\n+  private getUpgradeLevel: (type: UpgradeType) => number,\n+  private isSecretPurchased: (type: SecretUpgradeType) => boolean\n+)\n+```\n+\n+**vs.** HeatGame directly calls `upgradeManager.getUpgradeLevel()`.\n+\n+**Question:** Why the indirection for PhysicsEngine but not elsewhere?\n+\n+### 6.2 Cell Access Patterns\n+\n+- `getCell()` returns a copy\n+- `getCellRef()` returns direct reference\n+- `getGridRef()` returns entire grid reference\n+\n+**Inconsistent:** Sometimes safety copies, sometimes direct mutation.\n+\n+### 6.3 Money Tracking\n+\n+- `HeatGame.money` - private field\n+- `PhysicsStats.totalMoneyEarned` - tracked by physics\n+- `GameStats.totalMoneyEarned` - synced from physics\n+\n+Money earned flows:\n+1. Power sold → PhysicsEngine adds to `stats.totalMoneyEarned`\n+2. HeatGame syncs from physics stats\n+3. HeatGame also does `this.money += result.moneyEarned`\n+\n+Three places tracking money-related values.\n+\n+---\n+\n+## 7. UI EXPOSURE\n+\n+### 7.1 Methods That Could Be Internal\n+\n+These are public but only used internally or not at all:\n+- `getGridSnapshot()` - only used by renderer, could be internal\n+- Multiple `getEffective*ForTier()` methods - UI helpers, consider moving to renderer\n+\n+### 7.2 Missing UI Exposure\n+\n+- No way to see individual cell efficiency at a glance\n+- No \"projected income per tick\" display\n+- Heat balance stats shown but not prominently\n+\n+---\n+\n+## 8. MODERN DEPENDENCIES\n+\n+### Current State (Excellent)\n+- **Zero runtime dependencies** - pure TypeScript\n+- Dev deps: vitest, playwright, typescript, concurrently\n+\n+### Potential Additions (NOT recommended unless needed)\n+\n+| Library | Would Help With | Why Skip |\n+|---------|-----------------|----------|\n+| rxjs | Event system | Overkill for this scale |\n+| immer | Immutable state | Not needed, mutable is fine |\n+| zustand | State management | Would complicate, not simplify |\n+| eventemitter3 | Events | Easy to write in 15 lines |\n+\n+**Verdict:** Keep zero runtime deps. The code is simple enough that adding libraries would add complexity, not remove it.\n+\n+---\n+\n+## 9. ACTION ITEMS (Priority Ordered)\n+\n+### High Impact, Low Effort\n+1. **Delete `STRUCTURE_COLORS`** - dead code\n+2. **Add melt temp upgrade mapping table** - replace switch\n+3. **Cache checkSecretUnlocks()** - only call when stats change\n+\n+### Medium Impact, Medium Effort\n+4. **Unify event system** - extract `EventEmitter<T>` class\n+5. **Consolidate stats ownership** - single source of truth\n+6. **Table-drive getUpgradeEffectDisplay()** - reduce switch explosion\n+\n+### Low Priority / Optional\n+7. **Review pass-through getters** - consider direct manager access\n+8. **Clean up backward compat exports** - if unused\n+\n+---\n+\n+## 10. DATA FLOW DIAGRAMS\n+\n+### Tick Flow\n+```\n+game.tick()\n+  ├─→ tickCount++\n+  ├─→ physicsEngine.tick()\n+  │     ├─→ initCellPerformance()\n+  │     ├─→ processHeatGeneration() → totalHeatGenerated\n+  │     ├─→ processFuelDepletion() → emits 'fuel_depleted'\n+  │     ├─→ processHeatTransfer() → heatLostToEnvironment\n+  │     ├─→ processHeatDissipation() → heatVentilated\n+  │     ├─→ processPowerGeneration() → updates stats.totalPowerGenerated\n+  │     ├─→ processPowerSale() → emits 'power_sold', returns moneyEarned\n+  │     ├─→ processOverheating() → emits 'meltdown'/'structure_melted'\n+  │     └─→ return { moneyEarned, heatBalance }\n+  ├─→ sync stats from physicsEngine to gameStats (REDUNDANT)\n+  ├─→ money += moneyEarned\n+  └─→ checkSecretUnlocks() (OFTEN UNNECESSARY)\n+```\n+\n+### Event Flow\n+```\n+PhysicsEngine event\n+  │\n+  ├─→ (fuel_depleted) → HeatGame forwards → Renderer shows\n+  ├─→ (power_sold) → HeatGame forwards → Renderer shows\n+  ├─→ (structure_melted) → HeatGame forwards → Renderer shows\n+  └─→ (meltdown) → HeatGame increments meltdownCount\n+                 → HeatGame forwards → Renderer animation\n+                 → HeatGame checkSecretUnlocks()\n+```\n+\n+---\n+\n+## Conclusion\n+\n+The architecture is sound and follows good principles (composition, single responsibility). The main issues are:\n+\n+1. **Redundancy** in stats tracking and event forwarding\n+2. **Inefficiency** in secret unlock checking\n+3. **Dead code** (STRUCTURE_COLORS)\n+4. **Switch explosions** that could be tables\n+\n+None of these are critical bugs, but addressing them would make the codebase leaner and more maintainable.\ndiff --git a/CLAUDE.md b/CLAUDE.md\nindex c4b53c3..b20e282 100644\n--- a/CLAUDE.md\n+++ b/CLAUDE.md\n@@ -15,10 +15,24 @@ HeatGame (orchestrator)\n \n 2. **Upgrade Callback**: PhysicsEngine queries upgrades via closure `(type) => upgradeManager.getUpgradeLevel(type)`. Don't purchase upgrades during physics tick.\n \n-3. **Stats Ownership**:\n-   - Physics stats (totalPowerGenerated, ticksAtHighHeat, fuelRodsDepleted) → owned by PhysicsEngine\n-   - Game stats (meltdownCount, structuresBuilt, demolishCount) → owned by HeatGame\n-   - HeatGame syncs from PhysicsEngine after each tick\n+3. **Stats Ownership** (Single Source of Truth):\n+   - Physics stats → **owned by PhysicsEngine**, queried on demand via `physicsEngine.getStats()`\n+     - `totalPowerGenerated`, `ticksAtHighHeat`, `fuelRodsDepleted`, `fuelRodsDepletedCool`, `fuelRodsDepletedIce`\n+   - Game stats → **owned by HeatGame**\n+     - `meltdownCount`, `tickCount`, `structuresBuilt`, `demolishCount`, `manualClicks`, `totalMoneyEarned`\n+   - **No sync/duplication**: `getStats()` combines both on demand\n+\n+4. **Cell Access Patterns**:\n+   - `getCell()` → returns copy (for read-only external access)\n+   - `getCellRef()` → returns reference (for mutation, internal use)\n+   - `getGridRef()` → returns entire grid reference (for PhysicsEngine)\n+   - **Prefer references** over copies when mutation is needed\n+\n+5. **Error Handling** (Fail Fast):\n+   - Physics violations (e.g., heat balance) throw `HeatBalanceError`\n+   - Game loop catches exceptions, pauses game, shows toast notification\n+   - User can resume from Options menu\n+   - Detailed crash info logged to console\n \n ## Testing Philosophy\n \n@@ -44,6 +58,7 @@ npm run dev       # Watch mode + serve\n ## Code Style\n \n - Use composition over inheritance\n-- Prefer explicit state sync over implicit coupling\n+- Single source of truth for each piece of state (no sync/duplication)\n+- Query data from owner on demand instead of caching copies\n - Events are for UI notification, not state management\n-- Single source of truth for each piece of state\n+- Fail fast on invariant violations (throw, don't warn)\ndiff --git a/src/app.ts b/src/app.ts\nindex df02476..d9f0aad 100644\n--- a/src/app.ts\n+++ b/src/app.ts\n@@ -230,9 +230,32 @@ function initGame(): void {\n     gridPadding: GRID_PADDING,\n   });\n \n+  // Game loop state\n+  let lastTick = 0;\n+  let running = true;\n+  let paused = false;\n+  let ticksSinceLastSave = 0;\n+\n+  // Pause/unpause functions\n+  function setPaused(newPaused: boolean): void {\n+    paused = newPaused;\n+    // If unpausing after a crash, restart the loop\n+    if (!newPaused && !running) {\n+      running = true;\n+      requestAnimationFrame(gameLoop);\n+      showToast('Game resumed', 'info');\n+    }\n+  }\n+\n+  function isPaused(): boolean {\n+    return paused;\n+  }\n+\n   if (gameUI) {\n     renderer.createUI(gameUI, {\n       onResetSave: resetGame,\n+      onPauseToggle: setPaused,\n+      isPaused: isPaused,\n       buildVersion: BUILD_VERSION,\n     });\n   }\n@@ -249,15 +272,12 @@ function initGame(): void {\n     }\n   });\n \n-  let lastTick = 0;\n-  let running = true;\n-  let ticksSinceLastSave = 0;\n-\n   function gameLoop(timestamp: number): void {\n     if (!running) return;\n \n     try {\n-      if (timestamp - lastTick >= TICK_INTERVAL) {\n+      // Only tick if not paused\n+      if (!paused && timestamp - lastTick >= TICK_INTERVAL) {\n         game.tick();\n         lastTick = timestamp;\n \n@@ -273,6 +293,7 @@ function initGame(): void {\n       requestAnimationFrame(gameLoop);\n     } catch (error) {\n       running = false;\n+      paused = true;\n       handleGameCrash(error, game);\n     }\n   }\n@@ -280,29 +301,90 @@ function initGame(): void {\n   requestAnimationFrame(gameLoop);\n }\n \n+/**\n+ * Show a toast notification\n+ */\n+function showToast(message: string, type: 'info' | 'error' | 'warning' = 'info', duration: number = 5000): void {\n+  const toast = document.createElement('div');\n+  toast.className = `game-toast game-toast-${type}`;\n+  toast.style.cssText = `\n+    position: fixed;\n+    bottom: 20px;\n+    right: 20px;\n+    padding: 12px 20px;\n+    border-radius: 6px;\n+    font-family: system-ui, sans-serif;\n+    font-size: 14px;\n+    z-index: 10001;\n+    animation: toast-slide-in 0.3s ease-out;\n+    max-width: 400px;\n+    word-wrap: break-word;\n+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);\n+    ${type === 'error' ? 'background: #d32f2f; color: white;' : ''}\n+    ${type === 'warning' ? 'background: #f57c00; color: white;' : ''}\n+    ${type === 'info' ? 'background: #1976d2; color: white;' : ''}\n+  `;\n+  toast.textContent = message;\n+  document.body.appendChild(toast);\n+\n+  // Add animation styles if not present\n+  if (!document.getElementById('toast-styles')) {\n+    const style = document.createElement('style');\n+    style.id = 'toast-styles';\n+    style.textContent = `\n+      @keyframes toast-slide-in {\n+        from { transform: translateX(100%); opacity: 0; }\n+        to { transform: translateX(0); opacity: 1; }\n+      }\n+      @keyframes toast-slide-out {\n+        from { transform: translateX(0); opacity: 1; }\n+        to { transform: translateX(100%); opacity: 0; }\n+      }\n+    `;\n+    document.head.appendChild(style);\n+  }\n+\n+  setTimeout(() => {\n+    toast.style.animation = 'toast-slide-out 0.3s ease-in forwards';\n+    setTimeout(() => toast.remove(), 300);\n+  }, duration);\n+}\n+\n function handleGameCrash(error: unknown, game: HeatGame): void {\n-  const state = {\n-    money: game.getMoney(),\n-    ticks: game.getTickCount(),\n-    meltdowns: game.getMeltdownCount(),\n-    totalPower: game.getTotalPowerGenerated(),\n-    grid: game.getGridSnapshot(),\n+  const errorMessage = error instanceof Error ? error.message : String(error);\n+  const errorName = error instanceof Error ? error.name : 'Error';\n+\n+  // Log detailed crash info to console\n+  const crashInfo = {\n+    error: errorMessage,\n+    errorName,\n+    timestamp: new Date().toISOString(),\n+    gameState: {\n+      money: game.getMoney(),\n+      ticks: game.getTickCount(),\n+      meltdowns: game.getMeltdownCount(),\n+      totalPower: game.getTotalPowerGenerated(),\n+    },\n   };\n \n-  console.error('Game crashed:', error);\n-  console.error('Game state at crash:', JSON.stringify(state, null, 2));\n+  console.error('=== GAME CRASH ===');\n+  console.error('Error:', errorMessage);\n+  console.error('Error name:', errorName);\n+  console.error('Crash info:', JSON.stringify(crashInfo, null, 2));\n+  if (error instanceof Error && error.stack) {\n+    console.error('Stack trace:', error.stack);\n+  }\n \n-  const banner = document.createElement('div');\n-  banner.style.cssText = `\n-    position: fixed; top: 0; left: 0; right: 0;\n-    background: #d32f2f; color: white; padding: 16px;\n-    font-family: monospace; z-index: 10000;\n-  `;\n-  banner.innerHTML = `\n-    <strong>Game crashed!</strong> ${error instanceof Error ? error.message : String(error)}\n-    <br><small>Check console for details. Refresh to restart.</small>\n-  `;\n-  document.body.prepend(banner);\n+  // Show toast notification\n+  showToast(\n+    `Game crashed: ${errorName}. Game paused. Use Options → Resume to try again.`,\n+    'error',\n+    10000\n+  );\n+\n+  // Also log a helpful message about recovery\n+  console.info('Game has been paused. You can try to resume from the Options menu.');\n+  console.info('If the crash persists, consider resetting your save from the Options menu.');\n }\n \n // Start game when DOM is ready\ndiff --git a/src/game/HeatGame.ts b/src/game/HeatGame.ts\nindex f50b0e4..cbebb90 100644\n--- a/src/game/HeatGame.ts\n+++ b/src/game/HeatGame.ts\n@@ -29,6 +29,7 @@ export { StructureType, Tier, UpgradeType, SecretUpgradeType };\n export { Cell };\n export { TickHeatBalance };\n export { CellPerformance };\n+export type { PhysicsStats } from './PhysicsEngine.js';\n \n export interface UpgradeState {\n   levels: Record<UpgradeType, number>;\n@@ -40,15 +41,28 @@ export interface SecretState {\n   enabled: Record<SecretUpgradeType, boolean>;\n }\n \n+/**\n+ * Stats owned by HeatGame (game-level stats).\n+ * Physics stats are owned by PhysicsEngine and queried on demand.\n+ */\n export interface GameStats {\n-  totalPowerGenerated: number;\n+  // Game-owned stats\n   totalMoneyEarned: number;\n   meltdownCount: number;\n   tickCount: number;\n   demolishCount: number;\n-  ticksAtHighHeat: number;\n   manualClicks: number;\n   structuresBuilt: number;\n+}\n+\n+/**\n+ * Combined stats view returned by getStats().\n+ * Combines game-owned stats with physics-owned stats.\n+ */\n+export interface CombinedStats extends GameStats {\n+  // Physics-owned stats (queried from PhysicsEngine)\n+  totalPowerGenerated: number;\n+  ticksAtHighHeat: number;\n   fuelRodsDepleted: number;\n   fuelRodsDepletedCool: number;\n   fuelRodsDepletedIce: number;\n@@ -59,6 +73,7 @@ export interface GameState {\n   gridSize: number;\n   money: number;\n   stats: GameStats;\n+  physicsStats?: import('./PhysicsEngine.js').PhysicsStats;\n   upgrades: UpgradeState;\n   secrets: SecretState;\n }\n@@ -123,17 +138,12 @@ export class HeatGame {\n \n   private createInitialStats(): GameStats {\n     return {\n-      totalPowerGenerated: 0,\n       totalMoneyEarned: 0,\n       meltdownCount: 0,\n       tickCount: 0,\n       demolishCount: 0,\n-      ticksAtHighHeat: 0,\n       manualClicks: 0,\n       structuresBuilt: 0,\n-      fuelRodsDepleted: 0,\n-      fuelRodsDepletedCool: 0,\n-      fuelRodsDepletedIce: 0,\n     };\n   }\n \n@@ -229,15 +239,27 @@ export class HeatGame {\n   }\n \n   getTotalPowerGenerated(): number {\n-    return this.stats.totalPowerGenerated;\n+    return this.physicsEngine.getStats().totalPowerGenerated;\n   }\n \n   getTotalMoneyEarned(): number {\n     return this.stats.totalMoneyEarned;\n   }\n \n-  getStats(): GameStats {\n-    return { ...this.stats };\n+  /**\n+   * Get combined stats from game and physics engine.\n+   * Physics stats are queried on demand (single source of truth).\n+   */\n+  getStats(): CombinedStats {\n+    const physicsStats = this.physicsEngine.getStats();\n+    return {\n+      ...this.stats,\n+      totalPowerGenerated: physicsStats.totalPowerGenerated,\n+      ticksAtHighHeat: physicsStats.ticksAtHighHeat,\n+      fuelRodsDepleted: physicsStats.fuelRodsDepleted,\n+      fuelRodsDepletedCool: physicsStats.fuelRodsDepletedCool,\n+      fuelRodsDepletedIce: physicsStats.fuelRodsDepletedIce,\n+    };\n   }\n \n   getUpgradeLevel(type: UpgradeType): number {\n@@ -520,17 +542,19 @@ export class HeatGame {\n   }\n \n   private checkSecretUnlocks(): void {\n-    const stats = {\n+    // Query physics stats from PhysicsEngine (single source of truth)\n+    const physicsStats = this.physicsEngine.getStats();\n+    const unlockStats = {\n       meltdownCount: this.stats.meltdownCount,\n       filledCells: this.gridManager.getFilledCellCount(),\n       totalMoneyEarned: this.stats.totalMoneyEarned,\n       demolishCount: this.stats.demolishCount,\n-      ticksAtHighHeat: this.stats.ticksAtHighHeat,\n-      fuelRodsDepletedCool: this.stats.fuelRodsDepletedCool,\n-      fuelRodsDepletedIce: this.stats.fuelRodsDepletedIce,\n+      ticksAtHighHeat: physicsStats.ticksAtHighHeat,\n+      fuelRodsDepletedCool: physicsStats.fuelRodsDepletedCool,\n+      fuelRodsDepletedIce: physicsStats.fuelRodsDepletedIce,\n     };\n \n-    this.upgradeManager.checkSecretUnlocks(stats);\n+    this.upgradeManager.checkSecretUnlocks(unlockStats);\n   }\n \n   // ==========================================================================\n@@ -540,21 +564,13 @@ export class HeatGame {\n   tick(): void {\n     this.stats.tickCount++;\n \n-    // Run physics simulation\n+    // Run physics simulation (PhysicsEngine owns physics stats)\n     const result = this.physicsEngine.tick();\n \n     // Store heat balance for UI access\n     this.lastTickHeatBalance = result.heatBalance;\n \n-    // Sync stats from physics engine (single source of truth for physics-related stats)\n-    const physicsStats = this.physicsEngine.getStats();\n-    this.stats.totalPowerGenerated = physicsStats.totalPowerGenerated;\n-    this.stats.ticksAtHighHeat = physicsStats.ticksAtHighHeat;\n-    this.stats.fuelRodsDepleted = physicsStats.fuelRodsDepleted;\n-    this.stats.fuelRodsDepletedCool = physicsStats.fuelRodsDepletedCool;\n-    this.stats.fuelRodsDepletedIce = physicsStats.fuelRodsDepletedIce;\n-\n-    // Add money earned from power sales\n+    // Add money earned from power sales (HeatGame owns money tracking)\n     this.money += result.moneyEarned;\n     this.stats.totalMoneyEarned += result.moneyEarned;\n \n@@ -567,11 +583,14 @@ export class HeatGame {\n   // ==========================================================================\n \n   serialize(): string {\n+    // Get physics stats for serialization (owned by PhysicsEngine)\n+    const physicsStats = this.physicsEngine.getStats();\n     const state: GameState = {\n       grid: this.gridManager.getSnapshot(),\n       gridSize: this.gridManager.getSize(),\n       money: this.money,\n       stats: { ...this.stats },\n+      physicsStats: { ...physicsStats },\n       upgrades: this.upgradeManager.getUpgradeState(),\n       secrets: this.upgradeManager.getSecretState(),\n     };\n@@ -585,7 +604,7 @@ export class HeatGame {\n     // Restore grid\n     game.gridManager.restoreFromState(state.grid, state.gridSize);\n \n-    // Restore money and stats\n+    // Restore money and game-owned stats\n     game.money = state.money;\n     game.stats = { ...state.stats };\n \n@@ -593,15 +612,21 @@ export class HeatGame {\n     game.upgradeManager.restoreUpgradeState(state.upgrades);\n     game.upgradeManager.restoreSecretState(state.secrets);\n \n-    // Sync physics engine stats\n-    game.physicsEngine.setStats({\n-      totalPowerGenerated: state.stats.totalPowerGenerated,\n-      totalMoneyEarned: state.stats.totalMoneyEarned,\n-      fuelRodsDepleted: state.stats.fuelRodsDepleted,\n-      ticksAtHighHeat: state.stats.ticksAtHighHeat,\n-      fuelRodsDepletedCool: state.stats.fuelRodsDepletedCool ?? 0,\n-      fuelRodsDepletedIce: state.stats.fuelRodsDepletedIce ?? 0,\n-    });\n+    // Restore physics stats (handle legacy saves without physicsStats)\n+    if (state.physicsStats) {\n+      game.physicsEngine.setStats(state.physicsStats);\n+    } else {\n+      // Legacy save format - physics stats were in state.stats\n+      const legacyStats = state.stats as unknown as Record<string, number>;\n+      game.physicsEngine.setStats({\n+        totalPowerGenerated: legacyStats.totalPowerGenerated ?? 0,\n+        totalMoneyEarned: legacyStats.totalMoneyEarned ?? 0,\n+        fuelRodsDepleted: legacyStats.fuelRodsDepleted ?? 0,\n+        ticksAtHighHeat: legacyStats.ticksAtHighHeat ?? 0,\n+        fuelRodsDepletedCool: legacyStats.fuelRodsDepletedCool ?? 0,\n+        fuelRodsDepletedIce: legacyStats.fuelRodsDepletedIce ?? 0,\n+      });\n+    }\n \n     return game;\n   }\ndiff --git a/src/game/HeatGameRenderer.ts b/src/game/HeatGameRenderer.ts\nindex 3b6e5ab..26b3e31 100644\n--- a/src/game/HeatGameRenderer.ts\n+++ b/src/game/HeatGameRenderer.ts\n@@ -93,6 +93,8 @@ export interface RenderConfig {\n \n export interface UIOptions {\n   onResetSave?: () => void;\n+  onPauseToggle?: (paused: boolean) => void;\n+  isPaused?: () => boolean;\n   buildVersion?: string;\n }\n \n@@ -103,18 +105,6 @@ export const DEFAULT_RENDER_CONFIG: RenderConfig = {\n   showGrid: true,\n };\n \n-// Color mapping for structures\n-const STRUCTURE_COLORS: Record<StructureType, string> = {\n-  [StructureType.Empty]: '#2a2a2a',\n-  [StructureType.FuelRod]: '#ff6b00',\n-  [StructureType.Ventilator]: '#00aaff',\n-  [StructureType.HeatExchanger]: '#ffaa00',\n-  [StructureType.Insulator]: '#888888',\n-  [StructureType.Turbine]: '#aa00ff',\n-  [StructureType.Substation]: '#ffff00',\n-  [StructureType.VoidCell]: '#000066',\n-};\n-\n // Structure symbols for simple rendering\n const STRUCTURE_SYMBOLS: Record<StructureType, string> = {\n   [StructureType.Empty]: '',\n@@ -816,6 +806,8 @@ export class HeatGameRenderer {\n     });\n   }\n \n+  private pauseButton: HTMLButtonElement | null = null;\n+\n   private createOptionsMenu(): void {\n     if (!this.optionsMenu) return;\n \n@@ -827,6 +819,26 @@ export class HeatGameRenderer {\n     const optionsList = document.createElement('div');\n     optionsList.className = 'options-list';\n \n+    // Pause/Resume button\n+    if (this.uiOptions.onPauseToggle && this.uiOptions.isPaused) {\n+      const pauseItem = document.createElement('div');\n+      pauseItem.className = 'options-item';\n+\n+      this.pauseButton = document.createElement('button');\n+      this.pauseButton.className = 'options-btn pause-btn';\n+      this.pauseButton.textContent = this.uiOptions.isPaused() ? 'Resume Game' : 'Pause Game';\n+      this.pauseButton.addEventListener('click', () => {\n+        if (this.uiOptions.onPauseToggle && this.uiOptions.isPaused) {\n+          const newPaused = !this.uiOptions.isPaused();\n+          this.uiOptions.onPauseToggle(newPaused);\n+          this.updatePauseButton();\n+        }\n+      });\n+\n+      pauseItem.appendChild(this.pauseButton);\n+      optionsList.appendChild(pauseItem);\n+    }\n+\n     // Reset save button\n     if (this.uiOptions.onResetSave) {\n       const resetItem = document.createElement('div');\n@@ -856,6 +868,14 @@ export class HeatGameRenderer {\n     this.optionsMenu.appendChild(optionsList);\n   }\n \n+  private updatePauseButton(): void {\n+    if (this.pauseButton && this.uiOptions.isPaused) {\n+      const isPaused = this.uiOptions.isPaused();\n+      this.pauseButton.textContent = isPaused ? 'Resume Game' : 'Pause Game';\n+      this.pauseButton.classList.toggle('paused', isPaused);\n+    }\n+  }\n+\n   private updateBuildMenuSelection(): void {\n     if (!this.buildMenu) return;\n \ndiff --git a/src/game/PhysicsEngine.ts b/src/game/PhysicsEngine.ts\nindex 540fea3..115703b 100644\n--- a/src/game/PhysicsEngine.ts\n+++ b/src/game/PhysicsEngine.ts\n@@ -5,6 +5,17 @@\n  * This class is responsible for all physics simulation logic.\n  */\n \n+/**\n+ * Error thrown when heat balance equation is violated.\n+ * This indicates a bug in the physics simulation.\n+ */\n+export class HeatBalanceError extends Error {\n+  constructor(message: string) {\n+    super(message);\n+    this.name = 'HeatBalanceError';\n+  }\n+}\n+\n import {\n   CORE_SETTINGS,\n   StructureType,\n@@ -800,15 +811,15 @@ export class PhysicsEngine {\n     const isBalanced = Math.abs(imbalance) < TOLERANCE;\n \n     if (!isBalanced) {\n-      console.warn(\n-        `[PhysicsEngine] Heat balance violation detected!\\n` +\n-        `  Generated: ${heatGenerated.toFixed(2)}\\n` +\n-        `  Ventilated: ${heatVentilated.toFixed(2)}\\n` +\n-        `  Converted to power: ${heatConvertedToPower.toFixed(2)}\\n` +\n-        `  Lost to environment: ${heatLostToEnvironment.toFixed(2)}\\n` +\n-        `  Expected delta: ${expectedDelta.toFixed(2)}\\n` +\n-        `  Actual delta: ${heatDeltaInGrid.toFixed(2)}\\n` +\n-        `  Imbalance: ${imbalance.toFixed(4)}`\n+      throw new HeatBalanceError(\n+        `Heat balance violation detected! ` +\n+        `Generated: ${heatGenerated.toFixed(2)}, ` +\n+        `Ventilated: ${heatVentilated.toFixed(2)}, ` +\n+        `Converted to power: ${heatConvertedToPower.toFixed(2)}, ` +\n+        `Lost to environment: ${heatLostToEnvironment.toFixed(2)}, ` +\n+        `Expected delta: ${expectedDelta.toFixed(2)}, ` +\n+        `Actual delta: ${heatDeltaInGrid.toFixed(2)}, ` +\n+        `Imbalance: ${imbalance.toFixed(4)}`\n       );\n     }",
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "/home/runner/work/claudetest123/claudetest123/test-results",
+        "repeatEach": 1,
+        "retries": 2,
+        "metadata": {
+          "ci": {
+            "commitHref": "https://github.com/bjuergens/claudetest123/commit/2c6314781ea9203d318062996204998f067c2987",
+            "commitHash": "2c6314781ea9203d318062996204998f067c2987",
+            "prHref": "https://github.com/bjuergens/claudetest123/pull/19",
+            "prTitle": "Add architecture review document",
+            "prBaseHash": "25cda124d881a8913f4eb9b36114cc294e7bb6a2",
+            "buildHref": "https://github.com/bjuergens/claudetest123/actions/runs/21568183732"
+          },
+          "gitCommit": {
+            "shortHash": "2c63147",
+            "hash": "2c6314781ea9203d318062996204998f067c2987",
+            "subject": "Merge 04a0ad25d46528f6d06c0d82597149f3e1891c56 into 25cda124d881a8913f4eb9b36114cc294e7bb6a2",
+            "body": "Merge 04a0ad25d46528f6d06c0d82597149f3e1891c56 into 25cda124d881a8913f4eb9b36114cc294e7bb6a2\n",
+            "author": {
+              "name": "Björn Jürgens",
+              "email": "4362465+bjuergens@users.noreply.github.com",
+              "time": 1769971283000
+            },
+            "committer": {
+              "name": "GitHub",
+              "email": "noreply@github.com",
+              "time": 1769971283000
+            },
+            "branch": "HEAD"
+          },
+          "gitDiff": "diff --git a/ARCHITECTURE_REVIEW.md b/ARCHITECTURE_REVIEW.md\nnew file mode 100644\nindex 0000000..1504d53\n--- /dev/null\n+++ b/ARCHITECTURE_REVIEW.md\n@@ -0,0 +1,368 @@\n+# Architecture Review: Heat Management Game\n+\n+**Review Date:** 2026-02-01\n+**Scope:** Complexity, data flows, event flows, redundancy, patterns\n+\n+---\n+\n+## Executive Summary\n+\n+The codebase is well-structured with clear separation of concerns. However, there are several areas where complexity can be reduced, redundant patterns eliminated, and consistency improved.\n+\n+### Key Findings:\n+1. **Stats duplication** - PhysicsEngine and HeatGame both track same stats, synced every tick\n+2. **Triple event system** - Three nearly identical event listener patterns\n+3. **Excessive secret checking** - Called on every tick, build, demolish, meltdown\n+4. **Dead code** - `STRUCTURE_COLORS` unused (replaced by HSV colors)\n+5. **Switch statement explosion** - Could be table-driven\n+\n+---\n+\n+## 1. COMPLEXITY HOTSPOTS\n+\n+### 1.1 PhysicsEngine.ts - Melt Temp Upgrade Mapping (lines 214-221)\n+\n+**Current:**\n+```typescript\n+let upgradeType: UpgradeType | null = null;\n+switch (structure) {\n+  case StructureType.FuelRod: upgradeType = UpgradeType.MeltTempFuelRod; break;\n+  case StructureType.Ventilator: upgradeType = UpgradeType.MeltTempVentilator; break;\n+  // ... 6 cases\n+}\n+```\n+\n+**Simplify to:**\n+```typescript\n+const MELT_TEMP_UPGRADES: Partial<Record<StructureType, UpgradeType>> = {\n+  [StructureType.FuelRod]: UpgradeType.MeltTempFuelRod,\n+  [StructureType.Ventilator]: UpgradeType.MeltTempVentilator,\n+  // ...\n+};\n+const upgradeType = MELT_TEMP_UPGRADES[structure];\n+```\n+\n+### 1.2 HeatGameRenderer.ts - getUpgradeEffectDisplay() (lines 925-1070)\n+\n+**Problem:** 150-line switch statement with repeated patterns.\n+\n+**Simplify:** Create a configuration object:\n+```typescript\n+const UPGRADE_EFFECT_CONFIG: Record<UpgradeType, {\n+  description: string;\n+  getValues: (level: number, def: UpgradeDefinition) => { current: string; next: string };\n+}> = { ... };\n+```\n+\n+### 1.3 Duplicate \"ForTier\" Methods in PhysicsEngine\n+\n+These methods have identical patterns:\n+- `getEffectivePowerSaleRateForTier()`\n+- `getEffectiveVentilatorDissipationForTier()`\n+- `getEffectiveFuelHeatGenerationForTier()`\n+- `getEffectiveTurbinePowerForTier()`\n+\n+**Consider:** A single generic method with structure type parameter, or move to BalanceConfig as helper functions.\n+\n+### 1.4 HeatGame.ts - Pass-through Getters (lines 211-340)\n+\n+**30+ getters** that just delegate to sub-components:\n+```typescript\n+getUpgradeLevel(type) { return this.upgradeManager.getUpgradeLevel(type); }\n+isSecretUnlocked(type) { return this.upgradeManager.isSecretUnlocked(type); }\n+// ... many more\n+```\n+\n+**Question:** Does UI need these all through HeatGame, or can it access managers directly?\n+\n+---\n+\n+## 2. REDUNDANT DATA\n+\n+### 2.1 Stats Tracked in Two Places\n+\n+**PhysicsStats** (PhysicsEngine.ts:38-47):\n+- `totalPowerGenerated`\n+- `totalMoneyEarned`\n+- `fuelRodsDepleted`\n+- `ticksAtHighHeat`\n+- `fuelRodsDepletedCool`\n+- `fuelRodsDepletedIce`\n+\n+**GameStats** (HeatGame.ts:43-55):\n+- Same fields, plus `meltdownCount`, `tickCount`, etc.\n+\n+**Current Flow:**\n+```\n+PhysicsEngine.tick() → updates PhysicsStats\n+HeatGame.tick() → syncs from PhysicsStats to GameStats (lines 550-555)\n+```\n+\n+**Problem:** Two sources of truth, synced every tick.\n+\n+**Recommendation:**\n+- Option A: PhysicsEngine owns physics stats, HeatGame owns game stats, no duplication\n+- Option B: Single Stats object shared/passed around\n+\n+### 2.2 Grid Snapshots Created Multiple Times\n+\n+- `render()` → `getGridSnapshot()` (full grid copy)\n+- `getCellTooltip()` → `getCell()` (single cell copy)\n+- Every render creates a full grid snapshot even for static grids\n+\n+**Recommendation:** Consider dirty-flagging or direct grid access for read-only rendering.\n+\n+---\n+\n+## 3. EVENT SYSTEM ISSUES\n+\n+### 3.1 Triple Event System Pattern\n+\n+Three nearly identical implementations:\n+- `GameEventListener` / `eventListeners[]` in HeatGame.ts\n+- `PhysicsEventListener` / `eventListeners[]` in PhysicsEngine.ts\n+- `UpgradeEventListener` / `eventListeners[]` in UpgradeManager.ts\n+\n+Each has identical `addEventListener()`, `removeEventListener()`, `emitEvent()` methods.\n+\n+**Recommendation:** Extract to a shared `EventEmitter<T>` class:\n+```typescript\n+class EventEmitter<T> {\n+  private listeners: ((event: T) => void)[] = [];\n+  on(listener: (event: T) => void) { ... }\n+  off(listener: (event: T) => void) { ... }\n+  emit(event: T) { ... }\n+}\n+```\n+\n+### 3.2 Event Forwarding Chain\n+\n+**Current Flow:**\n+```\n+PhysicsEngine emits 'meltdown'\n+  → HeatGame listener catches it (line 167)\n+  → HeatGame increments meltdownCount\n+  → HeatGame emits 'meltdown' to its listeners\n+  → Renderer catches it for animation\n+```\n+\n+**Double-handling:** Events are caught, re-emitted, caught again.\n+\n+**Alternative:** Single event bus that all components publish/subscribe to.\n+\n+### 3.3 Double-Tapped Events - checkSecretUnlocks()\n+\n+Called from:\n+1. `build()` (line 433)\n+2. `demolish()` (line 459)\n+3. After meltdown event (line 170)\n+4. `tick()` (line 562)\n+\n+**Per tick:** Called at least once, often more if building/demolishing.\n+\n+**Problem:** Most calls find nothing changed. Checking all secrets every time is wasteful.\n+\n+**Recommendation:** Only check when relevant stats change:\n+```typescript\n+// In tick(), after syncing stats:\n+if (physicsStats.fuelRodsDepleted !== previousFuelRodsDepleted) {\n+  this.checkSecretUnlocks();\n+}\n+```\n+\n+---\n+\n+## 4. DEAD CODE / UNUSED\n+\n+### 4.1 STRUCTURE_COLORS in HeatGameRenderer.ts (lines 107-116)\n+\n+```typescript\n+const STRUCTURE_COLORS: Record<StructureType, string> = {\n+  [StructureType.Empty]: '#2a2a2a',\n+  [StructureType.FuelRod]: '#ff6b00',\n+  // ...\n+};\n+```\n+\n+**Never used.** Rendering uses `getStructureHsvColor()` instead (line 346).\n+\n+**Action:** Delete `STRUCTURE_COLORS`.\n+\n+### 4.2 Backward Compatibility Exports (HeatGame.ts)\n+\n+```typescript\n+/** @deprecated Use getGridSize() instead */\n+get GRID_SIZE(): number { ... }\n+\n+export { CORE_SETTINGS };\n+export const GRID_SIZE = CORE_SETTINGS.INITIAL_GRID_SIZE;\n+```\n+\n+**Question:** Is anything still using these? If not, remove.\n+\n+---\n+\n+## 5. EDGE CASE HANDLING NOT NEEDED\n+\n+### 5.1 Redundant Bounds Checking\n+\n+`GridManager.getCell()` checks `isValidPosition()`, but callers often check again:\n+\n+```typescript\n+// HeatGame.build()\n+const cell = this.gridManager.getCellRef(x, y)!;  // Force unwrap - trusts prior canBuild check\n+```\n+\n+**Pattern:** Sometimes trusts prior check, sometimes re-checks. Be consistent.\n+\n+### 5.2 Heat Balance Verification (PhysicsEngine.ts:795-813)\n+\n+```typescript\n+if (!isBalanced) {\n+  console.warn(`[PhysicsEngine] Heat balance violation detected!...`);\n+}\n+```\n+\n+**Question:** Is this debug-only code? Either:\n+- Remove for production (trust the math)\n+- Make it a test/debug mode flag\n+\n+---\n+\n+## 6. INCONSISTENT PATTERNS\n+\n+### 6.1 Upgrade Queries\n+\n+PhysicsEngine gets upgrade info via callbacks:\n+```typescript\n+constructor(\n+  private getUpgradeLevel: (type: UpgradeType) => number,\n+  private isSecretPurchased: (type: SecretUpgradeType) => boolean\n+)\n+```\n+\n+**vs.** HeatGame directly calls `upgradeManager.getUpgradeLevel()`.\n+\n+**Question:** Why the indirection for PhysicsEngine but not elsewhere?\n+\n+### 6.2 Cell Access Patterns\n+\n+- `getCell()` returns a copy\n+- `getCellRef()` returns direct reference\n+- `getGridRef()` returns entire grid reference\n+\n+**Inconsistent:** Sometimes safety copies, sometimes direct mutation.\n+\n+### 6.3 Money Tracking\n+\n+- `HeatGame.money` - private field\n+- `PhysicsStats.totalMoneyEarned` - tracked by physics\n+- `GameStats.totalMoneyEarned` - synced from physics\n+\n+Money earned flows:\n+1. Power sold → PhysicsEngine adds to `stats.totalMoneyEarned`\n+2. HeatGame syncs from physics stats\n+3. HeatGame also does `this.money += result.moneyEarned`\n+\n+Three places tracking money-related values.\n+\n+---\n+\n+## 7. UI EXPOSURE\n+\n+### 7.1 Methods That Could Be Internal\n+\n+These are public but only used internally or not at all:\n+- `getGridSnapshot()` - only used by renderer, could be internal\n+- Multiple `getEffective*ForTier()` methods - UI helpers, consider moving to renderer\n+\n+### 7.2 Missing UI Exposure\n+\n+- No way to see individual cell efficiency at a glance\n+- No \"projected income per tick\" display\n+- Heat balance stats shown but not prominently\n+\n+---\n+\n+## 8. MODERN DEPENDENCIES\n+\n+### Current State (Excellent)\n+- **Zero runtime dependencies** - pure TypeScript\n+- Dev deps: vitest, playwright, typescript, concurrently\n+\n+### Potential Additions (NOT recommended unless needed)\n+\n+| Library | Would Help With | Why Skip |\n+|---------|-----------------|----------|\n+| rxjs | Event system | Overkill for this scale |\n+| immer | Immutable state | Not needed, mutable is fine |\n+| zustand | State management | Would complicate, not simplify |\n+| eventemitter3 | Events | Easy to write in 15 lines |\n+\n+**Verdict:** Keep zero runtime deps. The code is simple enough that adding libraries would add complexity, not remove it.\n+\n+---\n+\n+## 9. ACTION ITEMS (Priority Ordered)\n+\n+### High Impact, Low Effort\n+1. **Delete `STRUCTURE_COLORS`** - dead code\n+2. **Add melt temp upgrade mapping table** - replace switch\n+3. **Cache checkSecretUnlocks()** - only call when stats change\n+\n+### Medium Impact, Medium Effort\n+4. **Unify event system** - extract `EventEmitter<T>` class\n+5. **Consolidate stats ownership** - single source of truth\n+6. **Table-drive getUpgradeEffectDisplay()** - reduce switch explosion\n+\n+### Low Priority / Optional\n+7. **Review pass-through getters** - consider direct manager access\n+8. **Clean up backward compat exports** - if unused\n+\n+---\n+\n+## 10. DATA FLOW DIAGRAMS\n+\n+### Tick Flow\n+```\n+game.tick()\n+  ├─→ tickCount++\n+  ├─→ physicsEngine.tick()\n+  │     ├─→ initCellPerformance()\n+  │     ├─→ processHeatGeneration() → totalHeatGenerated\n+  │     ├─→ processFuelDepletion() → emits 'fuel_depleted'\n+  │     ├─→ processHeatTransfer() → heatLostToEnvironment\n+  │     ├─→ processHeatDissipation() → heatVentilated\n+  │     ├─→ processPowerGeneration() → updates stats.totalPowerGenerated\n+  │     ├─→ processPowerSale() → emits 'power_sold', returns moneyEarned\n+  │     ├─→ processOverheating() → emits 'meltdown'/'structure_melted'\n+  │     └─→ return { moneyEarned, heatBalance }\n+  ├─→ sync stats from physicsEngine to gameStats (REDUNDANT)\n+  ├─→ money += moneyEarned\n+  └─→ checkSecretUnlocks() (OFTEN UNNECESSARY)\n+```\n+\n+### Event Flow\n+```\n+PhysicsEngine event\n+  │\n+  ├─→ (fuel_depleted) → HeatGame forwards → Renderer shows\n+  ├─→ (power_sold) → HeatGame forwards → Renderer shows\n+  ├─→ (structure_melted) → HeatGame forwards → Renderer shows\n+  └─→ (meltdown) → HeatGame increments meltdownCount\n+                 → HeatGame forwards → Renderer animation\n+                 → HeatGame checkSecretUnlocks()\n+```\n+\n+---\n+\n+## Conclusion\n+\n+The architecture is sound and follows good principles (composition, single responsibility). The main issues are:\n+\n+1. **Redundancy** in stats tracking and event forwarding\n+2. **Inefficiency** in secret unlock checking\n+3. **Dead code** (STRUCTURE_COLORS)\n+4. **Switch explosions** that could be tables\n+\n+None of these are critical bugs, but addressing them would make the codebase leaner and more maintainable.\ndiff --git a/CLAUDE.md b/CLAUDE.md\nindex c4b53c3..b20e282 100644\n--- a/CLAUDE.md\n+++ b/CLAUDE.md\n@@ -15,10 +15,24 @@ HeatGame (orchestrator)\n \n 2. **Upgrade Callback**: PhysicsEngine queries upgrades via closure `(type) => upgradeManager.getUpgradeLevel(type)`. Don't purchase upgrades during physics tick.\n \n-3. **Stats Ownership**:\n-   - Physics stats (totalPowerGenerated, ticksAtHighHeat, fuelRodsDepleted) → owned by PhysicsEngine\n-   - Game stats (meltdownCount, structuresBuilt, demolishCount) → owned by HeatGame\n-   - HeatGame syncs from PhysicsEngine after each tick\n+3. **Stats Ownership** (Single Source of Truth):\n+   - Physics stats → **owned by PhysicsEngine**, queried on demand via `physicsEngine.getStats()`\n+     - `totalPowerGenerated`, `ticksAtHighHeat`, `fuelRodsDepleted`, `fuelRodsDepletedCool`, `fuelRodsDepletedIce`\n+   - Game stats → **owned by HeatGame**\n+     - `meltdownCount`, `tickCount`, `structuresBuilt`, `demolishCount`, `manualClicks`, `totalMoneyEarned`\n+   - **No sync/duplication**: `getStats()` combines both on demand\n+\n+4. **Cell Access Patterns**:\n+   - `getCell()` → returns copy (for read-only external access)\n+   - `getCellRef()` → returns reference (for mutation, internal use)\n+   - `getGridRef()` → returns entire grid reference (for PhysicsEngine)\n+   - **Prefer references** over copies when mutation is needed\n+\n+5. **Error Handling** (Fail Fast):\n+   - Physics violations (e.g., heat balance) throw `HeatBalanceError`\n+   - Game loop catches exceptions, pauses game, shows toast notification\n+   - User can resume from Options menu\n+   - Detailed crash info logged to console\n \n ## Testing Philosophy\n \n@@ -44,6 +58,7 @@ npm run dev       # Watch mode + serve\n ## Code Style\n \n - Use composition over inheritance\n-- Prefer explicit state sync over implicit coupling\n+- Single source of truth for each piece of state (no sync/duplication)\n+- Query data from owner on demand instead of caching copies\n - Events are for UI notification, not state management\n-- Single source of truth for each piece of state\n+- Fail fast on invariant violations (throw, don't warn)\ndiff --git a/src/app.ts b/src/app.ts\nindex df02476..d9f0aad 100644\n--- a/src/app.ts\n+++ b/src/app.ts\n@@ -230,9 +230,32 @@ function initGame(): void {\n     gridPadding: GRID_PADDING,\n   });\n \n+  // Game loop state\n+  let lastTick = 0;\n+  let running = true;\n+  let paused = false;\n+  let ticksSinceLastSave = 0;\n+\n+  // Pause/unpause functions\n+  function setPaused(newPaused: boolean): void {\n+    paused = newPaused;\n+    // If unpausing after a crash, restart the loop\n+    if (!newPaused && !running) {\n+      running = true;\n+      requestAnimationFrame(gameLoop);\n+      showToast('Game resumed', 'info');\n+    }\n+  }\n+\n+  function isPaused(): boolean {\n+    return paused;\n+  }\n+\n   if (gameUI) {\n     renderer.createUI(gameUI, {\n       onResetSave: resetGame,\n+      onPauseToggle: setPaused,\n+      isPaused: isPaused,\n       buildVersion: BUILD_VERSION,\n     });\n   }\n@@ -249,15 +272,12 @@ function initGame(): void {\n     }\n   });\n \n-  let lastTick = 0;\n-  let running = true;\n-  let ticksSinceLastSave = 0;\n-\n   function gameLoop(timestamp: number): void {\n     if (!running) return;\n \n     try {\n-      if (timestamp - lastTick >= TICK_INTERVAL) {\n+      // Only tick if not paused\n+      if (!paused && timestamp - lastTick >= TICK_INTERVAL) {\n         game.tick();\n         lastTick = timestamp;\n \n@@ -273,6 +293,7 @@ function initGame(): void {\n       requestAnimationFrame(gameLoop);\n     } catch (error) {\n       running = false;\n+      paused = true;\n       handleGameCrash(error, game);\n     }\n   }\n@@ -280,29 +301,90 @@ function initGame(): void {\n   requestAnimationFrame(gameLoop);\n }\n \n+/**\n+ * Show a toast notification\n+ */\n+function showToast(message: string, type: 'info' | 'error' | 'warning' = 'info', duration: number = 5000): void {\n+  const toast = document.createElement('div');\n+  toast.className = `game-toast game-toast-${type}`;\n+  toast.style.cssText = `\n+    position: fixed;\n+    bottom: 20px;\n+    right: 20px;\n+    padding: 12px 20px;\n+    border-radius: 6px;\n+    font-family: system-ui, sans-serif;\n+    font-size: 14px;\n+    z-index: 10001;\n+    animation: toast-slide-in 0.3s ease-out;\n+    max-width: 400px;\n+    word-wrap: break-word;\n+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);\n+    ${type === 'error' ? 'background: #d32f2f; color: white;' : ''}\n+    ${type === 'warning' ? 'background: #f57c00; color: white;' : ''}\n+    ${type === 'info' ? 'background: #1976d2; color: white;' : ''}\n+  `;\n+  toast.textContent = message;\n+  document.body.appendChild(toast);\n+\n+  // Add animation styles if not present\n+  if (!document.getElementById('toast-styles')) {\n+    const style = document.createElement('style');\n+    style.id = 'toast-styles';\n+    style.textContent = `\n+      @keyframes toast-slide-in {\n+        from { transform: translateX(100%); opacity: 0; }\n+        to { transform: translateX(0); opacity: 1; }\n+      }\n+      @keyframes toast-slide-out {\n+        from { transform: translateX(0); opacity: 1; }\n+        to { transform: translateX(100%); opacity: 0; }\n+      }\n+    `;\n+    document.head.appendChild(style);\n+  }\n+\n+  setTimeout(() => {\n+    toast.style.animation = 'toast-slide-out 0.3s ease-in forwards';\n+    setTimeout(() => toast.remove(), 300);\n+  }, duration);\n+}\n+\n function handleGameCrash(error: unknown, game: HeatGame): void {\n-  const state = {\n-    money: game.getMoney(),\n-    ticks: game.getTickCount(),\n-    meltdowns: game.getMeltdownCount(),\n-    totalPower: game.getTotalPowerGenerated(),\n-    grid: game.getGridSnapshot(),\n+  const errorMessage = error instanceof Error ? error.message : String(error);\n+  const errorName = error instanceof Error ? error.name : 'Error';\n+\n+  // Log detailed crash info to console\n+  const crashInfo = {\n+    error: errorMessage,\n+    errorName,\n+    timestamp: new Date().toISOString(),\n+    gameState: {\n+      money: game.getMoney(),\n+      ticks: game.getTickCount(),\n+      meltdowns: game.getMeltdownCount(),\n+      totalPower: game.getTotalPowerGenerated(),\n+    },\n   };\n \n-  console.error('Game crashed:', error);\n-  console.error('Game state at crash:', JSON.stringify(state, null, 2));\n+  console.error('=== GAME CRASH ===');\n+  console.error('Error:', errorMessage);\n+  console.error('Error name:', errorName);\n+  console.error('Crash info:', JSON.stringify(crashInfo, null, 2));\n+  if (error instanceof Error && error.stack) {\n+    console.error('Stack trace:', error.stack);\n+  }\n \n-  const banner = document.createElement('div');\n-  banner.style.cssText = `\n-    position: fixed; top: 0; left: 0; right: 0;\n-    background: #d32f2f; color: white; padding: 16px;\n-    font-family: monospace; z-index: 10000;\n-  `;\n-  banner.innerHTML = `\n-    <strong>Game crashed!</strong> ${error instanceof Error ? error.message : String(error)}\n-    <br><small>Check console for details. Refresh to restart.</small>\n-  `;\n-  document.body.prepend(banner);\n+  // Show toast notification\n+  showToast(\n+    `Game crashed: ${errorName}. Game paused. Use Options → Resume to try again.`,\n+    'error',\n+    10000\n+  );\n+\n+  // Also log a helpful message about recovery\n+  console.info('Game has been paused. You can try to resume from the Options menu.');\n+  console.info('If the crash persists, consider resetting your save from the Options menu.');\n }\n \n // Start game when DOM is ready\ndiff --git a/src/game/HeatGame.ts b/src/game/HeatGame.ts\nindex f50b0e4..cbebb90 100644\n--- a/src/game/HeatGame.ts\n+++ b/src/game/HeatGame.ts\n@@ -29,6 +29,7 @@ export { StructureType, Tier, UpgradeType, SecretUpgradeType };\n export { Cell };\n export { TickHeatBalance };\n export { CellPerformance };\n+export type { PhysicsStats } from './PhysicsEngine.js';\n \n export interface UpgradeState {\n   levels: Record<UpgradeType, number>;\n@@ -40,15 +41,28 @@ export interface SecretState {\n   enabled: Record<SecretUpgradeType, boolean>;\n }\n \n+/**\n+ * Stats owned by HeatGame (game-level stats).\n+ * Physics stats are owned by PhysicsEngine and queried on demand.\n+ */\n export interface GameStats {\n-  totalPowerGenerated: number;\n+  // Game-owned stats\n   totalMoneyEarned: number;\n   meltdownCount: number;\n   tickCount: number;\n   demolishCount: number;\n-  ticksAtHighHeat: number;\n   manualClicks: number;\n   structuresBuilt: number;\n+}\n+\n+/**\n+ * Combined stats view returned by getStats().\n+ * Combines game-owned stats with physics-owned stats.\n+ */\n+export interface CombinedStats extends GameStats {\n+  // Physics-owned stats (queried from PhysicsEngine)\n+  totalPowerGenerated: number;\n+  ticksAtHighHeat: number;\n   fuelRodsDepleted: number;\n   fuelRodsDepletedCool: number;\n   fuelRodsDepletedIce: number;\n@@ -59,6 +73,7 @@ export interface GameState {\n   gridSize: number;\n   money: number;\n   stats: GameStats;\n+  physicsStats?: import('./PhysicsEngine.js').PhysicsStats;\n   upgrades: UpgradeState;\n   secrets: SecretState;\n }\n@@ -123,17 +138,12 @@ export class HeatGame {\n \n   private createInitialStats(): GameStats {\n     return {\n-      totalPowerGenerated: 0,\n       totalMoneyEarned: 0,\n       meltdownCount: 0,\n       tickCount: 0,\n       demolishCount: 0,\n-      ticksAtHighHeat: 0,\n       manualClicks: 0,\n       structuresBuilt: 0,\n-      fuelRodsDepleted: 0,\n-      fuelRodsDepletedCool: 0,\n-      fuelRodsDepletedIce: 0,\n     };\n   }\n \n@@ -229,15 +239,27 @@ export class HeatGame {\n   }\n \n   getTotalPowerGenerated(): number {\n-    return this.stats.totalPowerGenerated;\n+    return this.physicsEngine.getStats().totalPowerGenerated;\n   }\n \n   getTotalMoneyEarned(): number {\n     return this.stats.totalMoneyEarned;\n   }\n \n-  getStats(): GameStats {\n-    return { ...this.stats };\n+  /**\n+   * Get combined stats from game and physics engine.\n+   * Physics stats are queried on demand (single source of truth).\n+   */\n+  getStats(): CombinedStats {\n+    const physicsStats = this.physicsEngine.getStats();\n+    return {\n+      ...this.stats,\n+      totalPowerGenerated: physicsStats.totalPowerGenerated,\n+      ticksAtHighHeat: physicsStats.ticksAtHighHeat,\n+      fuelRodsDepleted: physicsStats.fuelRodsDepleted,\n+      fuelRodsDepletedCool: physicsStats.fuelRodsDepletedCool,\n+      fuelRodsDepletedIce: physicsStats.fuelRodsDepletedIce,\n+    };\n   }\n \n   getUpgradeLevel(type: UpgradeType): number {\n@@ -520,17 +542,19 @@ export class HeatGame {\n   }\n \n   private checkSecretUnlocks(): void {\n-    const stats = {\n+    // Query physics stats from PhysicsEngine (single source of truth)\n+    const physicsStats = this.physicsEngine.getStats();\n+    const unlockStats = {\n       meltdownCount: this.stats.meltdownCount,\n       filledCells: this.gridManager.getFilledCellCount(),\n       totalMoneyEarned: this.stats.totalMoneyEarned,\n       demolishCount: this.stats.demolishCount,\n-      ticksAtHighHeat: this.stats.ticksAtHighHeat,\n-      fuelRodsDepletedCool: this.stats.fuelRodsDepletedCool,\n-      fuelRodsDepletedIce: this.stats.fuelRodsDepletedIce,\n+      ticksAtHighHeat: physicsStats.ticksAtHighHeat,\n+      fuelRodsDepletedCool: physicsStats.fuelRodsDepletedCool,\n+      fuelRodsDepletedIce: physicsStats.fuelRodsDepletedIce,\n     };\n \n-    this.upgradeManager.checkSecretUnlocks(stats);\n+    this.upgradeManager.checkSecretUnlocks(unlockStats);\n   }\n \n   // ==========================================================================\n@@ -540,21 +564,13 @@ export class HeatGame {\n   tick(): void {\n     this.stats.tickCount++;\n \n-    // Run physics simulation\n+    // Run physics simulation (PhysicsEngine owns physics stats)\n     const result = this.physicsEngine.tick();\n \n     // Store heat balance for UI access\n     this.lastTickHeatBalance = result.heatBalance;\n \n-    // Sync stats from physics engine (single source of truth for physics-related stats)\n-    const physicsStats = this.physicsEngine.getStats();\n-    this.stats.totalPowerGenerated = physicsStats.totalPowerGenerated;\n-    this.stats.ticksAtHighHeat = physicsStats.ticksAtHighHeat;\n-    this.stats.fuelRodsDepleted = physicsStats.fuelRodsDepleted;\n-    this.stats.fuelRodsDepletedCool = physicsStats.fuelRodsDepletedCool;\n-    this.stats.fuelRodsDepletedIce = physicsStats.fuelRodsDepletedIce;\n-\n-    // Add money earned from power sales\n+    // Add money earned from power sales (HeatGame owns money tracking)\n     this.money += result.moneyEarned;\n     this.stats.totalMoneyEarned += result.moneyEarned;\n \n@@ -567,11 +583,14 @@ export class HeatGame {\n   // ==========================================================================\n \n   serialize(): string {\n+    // Get physics stats for serialization (owned by PhysicsEngine)\n+    const physicsStats = this.physicsEngine.getStats();\n     const state: GameState = {\n       grid: this.gridManager.getSnapshot(),\n       gridSize: this.gridManager.getSize(),\n       money: this.money,\n       stats: { ...this.stats },\n+      physicsStats: { ...physicsStats },\n       upgrades: this.upgradeManager.getUpgradeState(),\n       secrets: this.upgradeManager.getSecretState(),\n     };\n@@ -585,7 +604,7 @@ export class HeatGame {\n     // Restore grid\n     game.gridManager.restoreFromState(state.grid, state.gridSize);\n \n-    // Restore money and stats\n+    // Restore money and game-owned stats\n     game.money = state.money;\n     game.stats = { ...state.stats };\n \n@@ -593,15 +612,21 @@ export class HeatGame {\n     game.upgradeManager.restoreUpgradeState(state.upgrades);\n     game.upgradeManager.restoreSecretState(state.secrets);\n \n-    // Sync physics engine stats\n-    game.physicsEngine.setStats({\n-      totalPowerGenerated: state.stats.totalPowerGenerated,\n-      totalMoneyEarned: state.stats.totalMoneyEarned,\n-      fuelRodsDepleted: state.stats.fuelRodsDepleted,\n-      ticksAtHighHeat: state.stats.ticksAtHighHeat,\n-      fuelRodsDepletedCool: state.stats.fuelRodsDepletedCool ?? 0,\n-      fuelRodsDepletedIce: state.stats.fuelRodsDepletedIce ?? 0,\n-    });\n+    // Restore physics stats (handle legacy saves without physicsStats)\n+    if (state.physicsStats) {\n+      game.physicsEngine.setStats(state.physicsStats);\n+    } else {\n+      // Legacy save format - physics stats were in state.stats\n+      const legacyStats = state.stats as unknown as Record<string, number>;\n+      game.physicsEngine.setStats({\n+        totalPowerGenerated: legacyStats.totalPowerGenerated ?? 0,\n+        totalMoneyEarned: legacyStats.totalMoneyEarned ?? 0,\n+        fuelRodsDepleted: legacyStats.fuelRodsDepleted ?? 0,\n+        ticksAtHighHeat: legacyStats.ticksAtHighHeat ?? 0,\n+        fuelRodsDepletedCool: legacyStats.fuelRodsDepletedCool ?? 0,\n+        fuelRodsDepletedIce: legacyStats.fuelRodsDepletedIce ?? 0,\n+      });\n+    }\n \n     return game;\n   }\ndiff --git a/src/game/HeatGameRenderer.ts b/src/game/HeatGameRenderer.ts\nindex 3b6e5ab..26b3e31 100644\n--- a/src/game/HeatGameRenderer.ts\n+++ b/src/game/HeatGameRenderer.ts\n@@ -93,6 +93,8 @@ export interface RenderConfig {\n \n export interface UIOptions {\n   onResetSave?: () => void;\n+  onPauseToggle?: (paused: boolean) => void;\n+  isPaused?: () => boolean;\n   buildVersion?: string;\n }\n \n@@ -103,18 +105,6 @@ export const DEFAULT_RENDER_CONFIG: RenderConfig = {\n   showGrid: true,\n };\n \n-// Color mapping for structures\n-const STRUCTURE_COLORS: Record<StructureType, string> = {\n-  [StructureType.Empty]: '#2a2a2a',\n-  [StructureType.FuelRod]: '#ff6b00',\n-  [StructureType.Ventilator]: '#00aaff',\n-  [StructureType.HeatExchanger]: '#ffaa00',\n-  [StructureType.Insulator]: '#888888',\n-  [StructureType.Turbine]: '#aa00ff',\n-  [StructureType.Substation]: '#ffff00',\n-  [StructureType.VoidCell]: '#000066',\n-};\n-\n // Structure symbols for simple rendering\n const STRUCTURE_SYMBOLS: Record<StructureType, string> = {\n   [StructureType.Empty]: '',\n@@ -816,6 +806,8 @@ export class HeatGameRenderer {\n     });\n   }\n \n+  private pauseButton: HTMLButtonElement | null = null;\n+\n   private createOptionsMenu(): void {\n     if (!this.optionsMenu) return;\n \n@@ -827,6 +819,26 @@ export class HeatGameRenderer {\n     const optionsList = document.createElement('div');\n     optionsList.className = 'options-list';\n \n+    // Pause/Resume button\n+    if (this.uiOptions.onPauseToggle && this.uiOptions.isPaused) {\n+      const pauseItem = document.createElement('div');\n+      pauseItem.className = 'options-item';\n+\n+      this.pauseButton = document.createElement('button');\n+      this.pauseButton.className = 'options-btn pause-btn';\n+      this.pauseButton.textContent = this.uiOptions.isPaused() ? 'Resume Game' : 'Pause Game';\n+      this.pauseButton.addEventListener('click', () => {\n+        if (this.uiOptions.onPauseToggle && this.uiOptions.isPaused) {\n+          const newPaused = !this.uiOptions.isPaused();\n+          this.uiOptions.onPauseToggle(newPaused);\n+          this.updatePauseButton();\n+        }\n+      });\n+\n+      pauseItem.appendChild(this.pauseButton);\n+      optionsList.appendChild(pauseItem);\n+    }\n+\n     // Reset save button\n     if (this.uiOptions.onResetSave) {\n       const resetItem = document.createElement('div');\n@@ -856,6 +868,14 @@ export class HeatGameRenderer {\n     this.optionsMenu.appendChild(optionsList);\n   }\n \n+  private updatePauseButton(): void {\n+    if (this.pauseButton && this.uiOptions.isPaused) {\n+      const isPaused = this.uiOptions.isPaused();\n+      this.pauseButton.textContent = isPaused ? 'Resume Game' : 'Pause Game';\n+      this.pauseButton.classList.toggle('paused', isPaused);\n+    }\n+  }\n+\n   private updateBuildMenuSelection(): void {\n     if (!this.buildMenu) return;\n \ndiff --git a/src/game/PhysicsEngine.ts b/src/game/PhysicsEngine.ts\nindex 540fea3..115703b 100644\n--- a/src/game/PhysicsEngine.ts\n+++ b/src/game/PhysicsEngine.ts\n@@ -5,6 +5,17 @@\n  * This class is responsible for all physics simulation logic.\n  */\n \n+/**\n+ * Error thrown when heat balance equation is violated.\n+ * This indicates a bug in the physics simulation.\n+ */\n+export class HeatBalanceError extends Error {\n+  constructor(message: string) {\n+    super(message);\n+    this.name = 'HeatBalanceError';\n+  }\n+}\n+\n import {\n   CORE_SETTINGS,\n   StructureType,\n@@ -800,15 +811,15 @@ export class PhysicsEngine {\n     const isBalanced = Math.abs(imbalance) < TOLERANCE;\n \n     if (!isBalanced) {\n-      console.warn(\n-        `[PhysicsEngine] Heat balance violation detected!\\n` +\n-        `  Generated: ${heatGenerated.toFixed(2)}\\n` +\n-        `  Ventilated: ${heatVentilated.toFixed(2)}\\n` +\n-        `  Converted to power: ${heatConvertedToPower.toFixed(2)}\\n` +\n-        `  Lost to environment: ${heatLostToEnvironment.toFixed(2)}\\n` +\n-        `  Expected delta: ${expectedDelta.toFixed(2)}\\n` +\n-        `  Actual delta: ${heatDeltaInGrid.toFixed(2)}\\n` +\n-        `  Imbalance: ${imbalance.toFixed(4)}`\n+      throw new HeatBalanceError(\n+        `Heat balance violation detected! ` +\n+        `Generated: ${heatGenerated.toFixed(2)}, ` +\n+        `Ventilated: ${heatVentilated.toFixed(2)}, ` +\n+        `Converted to power: ${heatConvertedToPower.toFixed(2)}, ` +\n+        `Lost to environment: ${heatLostToEnvironment.toFixed(2)}, ` +\n+        `Expected delta: ${expectedDelta.toFixed(2)}, ` +\n+        `Actual delta: ${heatDeltaInGrid.toFixed(2)}, ` +\n+        `Imbalance: ${imbalance.toFixed(4)}`\n       );\n     }",
+          "actualWorkers": 1
+        },
+        "id": "chromium",
+        "name": "chromium",
+        "testDir": "/home/runner/work/claudetest123/claudetest123/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 30000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "html",
+        {
+          "outputFolder": "playwright-report"
+        }
+      ],
+      [
+        "list",
+        null
+      ],
+      [
+        "json",
+        {
+          "outputFile": "test-results/results.json"
+        }
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "runAgents": "none",
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.58.0",
+    "workers": 1,
+    "webServer": {
+      "command": "npm run serve",
+      "url": "http://localhost:3000",
+      "reuseExistingServer": false,
+      "timeout": 120000
+    }
+  },
+  "suites": [
+    {
+      "title": "heat-game.spec.ts",
+      "file": "heat-game.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Heat Game E2E Tests",
+          "file": "heat-game.spec.ts",
+          "line": 40,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should load the game and display initial state",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 629,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-01T18:42:25.109Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-2428b-e-and-display-initial-state-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-2428b-e-and-display-initial-state-chromium/attachments/browser-logs-252e98eebb6d2a6fd5612fd184955e74f7d8fa0e.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-1f7f90ca45f76c134f4d",
+              "file": "heat-game.spec.ts",
+              "line": 86,
+              "column": 3
+            },
+            {
+              "title": "should place a Fuel Rod on the grid",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 856,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-01T18:42:27.254Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-05fff-lace-a-Fuel-Rod-on-the-grid-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-05fff-lace-a-Fuel-Rod-on-the-grid-chromium/attachments/browser-logs-daa597c1e58cdd3735064670bc098a56f535a7d5.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-a31bde006f3c29450fad",
+              "file": "heat-game.spec.ts",
+              "line": 116,
+              "column": 3
+            },
+            {
+              "title": "should place multiple structures and observe heat dynamics",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1436,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-01T18:42:28.125Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-edba4-s-and-observe-heat-dynamics-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-edba4-s-and-observe-heat-dynamics-chromium/attachments/browser-logs-a9526112523c68aa24fe78334be3ec2af4a1ba62.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-2ed04ebe32d9c471053a",
+              "file": "heat-game.spec.ts",
+              "line": 148,
+              "column": 3
+            },
+            {
+              "title": "should demolish a structure with right-click",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 753,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-01T18:42:29.575Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-53724--structure-with-right-click-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-53724--structure-with-right-click-chromium/attachments/browser-logs-d97b4f4e87a5cc31e1b5dee61d33b7cf6ee7bb2f.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-ff211d87a2ad19067056",
+              "file": "heat-game.spec.ts",
+              "line": 185,
+              "column": 3
+            },
+            {
+              "title": "should build a power generation setup",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1901,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-01T18:42:30.340Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-206ae-ld-a-power-generation-setup-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-206ae-ld-a-power-generation-setup-chromium/attachments/browser-logs-6db27ca250b3a1a4083663dd5a90aeedb0e1a354.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-abe0096aa1a1c45a3b34",
+              "file": "heat-game.spec.ts",
+              "line": 219,
+              "column": 3
+            },
+            {
+              "title": "should show heat buildup with clustered fuel rods",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1807,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-01T18:42:32.257Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-1ce31-up-with-clustered-fuel-rods-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-1ce31-up-with-clustered-fuel-rods-chromium/attachments/browser-logs-4108f70a5376472a80710ba1c287f526e1cfc9b4.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-ac87d21624a439db98b8",
+              "file": "heat-game.spec.ts",
+              "line": 256,
+              "column": 3
+            },
+            {
+              "title": "should not allow building without sufficient money",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1663,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-01T18:42:34.079Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-ee0f6-ng-without-sufficient-money-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-ee0f6-ng-without-sufficient-money-chromium/attachments/browser-logs-67852c21b9cbe344288f7cfb81aa3e88ded21441.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-b096005e15a85f67c2a8",
+              "file": "heat-game.spec.ts",
+              "line": 294,
+              "column": 3
+            },
+            {
+              "title": "should handle rapid clicking on the grid",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1454,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-01T18:42:35.756Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-c664c--rapid-clicking-on-the-grid-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-c664c--rapid-clicking-on-the-grid-chromium/attachments/browser-logs-8830c25d0c901f07d14f24299509ec6ff3fc0a0b.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-1b3f7a34798ed668be9c",
+              "file": "heat-game.spec.ts",
+              "line": 336,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-02-01T18:42:19.083Z",
+    "duration": 18205.351,
+    "expected": 8,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}
