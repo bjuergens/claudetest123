@@ -308,6 +308,79 @@ export class PhysicsEngine {
   }
 
   /**
+   * Get effective power sale rate for a given tier (with upgrades)
+   * Used for UI display without an actual cell
+   */
+  getEffectivePowerSaleRateForTier(tier: Tier): number {
+    const baseStats = STRUCTURE_BASE_STATS[StructureType.Substation];
+    let saleRate = baseStats.powerSaleRate;
+
+    saleRate *= Math.pow(10, tier - 1);
+
+    const level = this.getUpgradeLevel(UpgradeType.SubstationSaleRate);
+    const definition = UPGRADE_DEFINITIONS[UpgradeType.SubstationSaleRate];
+    saleRate += level * definition.improvementPerLevel;
+
+    return saleRate;
+  }
+
+  /**
+   * Get effective heat dissipation for a ventilator at a given tier (with upgrades)
+   * Used for UI display without an actual cell
+   */
+  getEffectiveVentilatorDissipationForTier(tier: Tier): number {
+    const baseStats = STRUCTURE_BASE_STATS[StructureType.Ventilator];
+    let dissipation = baseStats.heatDissipation;
+
+    dissipation *= Math.pow(10, tier - 1);
+
+    const level = this.getUpgradeLevel(UpgradeType.VentilatorDissipation);
+    const definition = UPGRADE_DEFINITIONS[UpgradeType.VentilatorDissipation];
+    dissipation += level * definition.improvementPerLevel;
+
+    return dissipation;
+  }
+
+  /**
+   * Get effective heat generation for a fuel rod at a given tier (with upgrades)
+   * Used for UI display without an actual cell
+   */
+  getEffectiveFuelHeatGenerationForTier(tier: Tier): number {
+    const upgradeLevel = this.getUpgradeLevel(UpgradeType.FuelHeatOutput);
+    return getFuelHeatGeneration(tier, upgradeLevel);
+  }
+
+  /**
+   * Get effective power generation for a turbine at a given tier
+   * Returns power per tick at max heat consumption
+   */
+  getEffectiveTurbinePowerForTier(tier: Tier): number {
+    const baseStats = STRUCTURE_BASE_STATS[StructureType.Turbine];
+    const maxHeatConsumption = baseStats.maxHeatConsumption * Math.pow(10, tier - 1);
+    return maxHeatConsumption * baseStats.powerGeneration;
+  }
+
+  /**
+   * Get effective conductivity for a heat exchanger at a given tier
+   * Note: Heat exchangers don't scale conductivity with tier, only have base conductivity
+   */
+  getEffectiveHeatExchangerConductivity(): number {
+    return STRUCTURE_BASE_STATS[StructureType.HeatExchanger].conductivity;
+  }
+
+  /**
+   * Get effective conductivity for an insulator (with upgrades)
+   */
+  getEffectiveInsulatorConductivity(): number {
+    const baseConductivity = STRUCTURE_BASE_STATS[StructureType.Insulator].conductivity;
+    const level = this.getUpgradeLevel(UpgradeType.InsulatorConductivity);
+    if (level > 0) {
+      return baseConductivity * Math.pow(0.5, level);
+    }
+    return baseConductivity;
+  }
+
+  /**
    * Process heat generation from fuel rods
    * Returns the total heat generated this tick
    */

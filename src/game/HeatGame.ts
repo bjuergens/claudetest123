@@ -296,6 +296,49 @@ export class HeatGame {
     return this.physicsEngine.getEffectivePowerSaleRate(cell);
   }
 
+  /**
+   * Get effective power sale rate for a given tier (with upgrades)
+   * Used for UI display without an actual cell
+   */
+  getEffectivePowerSaleRateForTier(tier: Tier): number {
+    return this.physicsEngine.getEffectivePowerSaleRateForTier(tier);
+  }
+
+  /**
+   * Get effective heat dissipation for a ventilator at a given tier (with upgrades)
+   */
+  getEffectiveVentilatorDissipationForTier(tier: Tier): number {
+    return this.physicsEngine.getEffectiveVentilatorDissipationForTier(tier);
+  }
+
+  /**
+   * Get effective heat generation for a fuel rod at a given tier (with upgrades)
+   */
+  getEffectiveFuelHeatGenerationForTier(tier: Tier): number {
+    return this.physicsEngine.getEffectiveFuelHeatGenerationForTier(tier);
+  }
+
+  /**
+   * Get effective power generation for a turbine at a given tier
+   */
+  getEffectiveTurbinePowerForTier(tier: Tier): number {
+    return this.physicsEngine.getEffectiveTurbinePowerForTier(tier);
+  }
+
+  /**
+   * Get effective conductivity for a heat exchanger
+   */
+  getEffectiveHeatExchangerConductivity(): number {
+    return this.physicsEngine.getEffectiveHeatExchangerConductivity();
+  }
+
+  /**
+   * Get effective conductivity for an insulator (with upgrades)
+   */
+  getEffectiveInsulatorConductivity(): number {
+    return this.physicsEngine.getEffectiveInsulatorConductivity();
+  }
+
   // ==========================================================================
   // MANUAL POWER GENERATION (Clicker)
   // ==========================================================================
