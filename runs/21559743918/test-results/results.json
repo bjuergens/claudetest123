@@ -1,0 +1,512 @@
+{
+  "config": {
+    "configFile": "/home/runner/work/claudetest123/claudetest123/playwright.config.ts",
+    "rootDir": "/home/runner/work/claudetest123/claudetest123/e2e",
+    "forbidOnly": true,
+    "fullyParallel": true,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "ci": {
+        "commitHref": "https://github.com/bjuergens/claudetest123/commit/53e7d736679d854761f5234a778c13e67227f487",
+        "commitHash": "53e7d736679d854761f5234a778c13e67227f487",
+        "prHref": "https://github.com/bjuergens/claudetest123/pull/19",
+        "prTitle": "Add architecture review document",
+        "prBaseHash": "25cda124d881a8913f4eb9b36114cc294e7bb6a2",
+        "buildHref": "https://github.com/bjuergens/claudetest123/actions/runs/21559743918"
+      },
+      "gitCommit": {
+        "shortHash": "53e7d73",
+        "hash": "53e7d736679d854761f5234a778c13e67227f487",
+        "subject": "Merge 501489df3c06d7540771d0b1588f66e92f96e33a into 25cda124d881a8913f4eb9b36114cc294e7bb6a2",
+        "body": "Merge 501489df3c06d7540771d0b1588f66e92f96e33a into 25cda124d881a8913f4eb9b36114cc294e7bb6a2\n",
+        "author": {
+          "name": "Björn Jürgens",
+          "email": "4362465+bjuergens@users.noreply.github.com",
+          "time": 1769934894000
+        },
+        "committer": {
+          "name": "GitHub",
+          "email": "noreply@github.com",
+          "time": 1769934894000
+        },
+        "branch": "HEAD"
+      },
+      "gitDiff": "diff --git a/ARCHITECTURE_REVIEW.md b/ARCHITECTURE_REVIEW.md\nnew file mode 100644\nindex 0000000..1504d53\n--- /dev/null\n+++ b/ARCHITECTURE_REVIEW.md\n@@ -0,0 +1,368 @@\n+# Architecture Review: Heat Management Game\n+\n+**Review Date:** 2026-02-01\n+**Scope:** Complexity, data flows, event flows, redundancy, patterns\n+\n+---\n+\n+## Executive Summary\n+\n+The codebase is well-structured with clear separation of concerns. However, there are several areas where complexity can be reduced, redundant patterns eliminated, and consistency improved.\n+\n+### Key Findings:\n+1. **Stats duplication** - PhysicsEngine and HeatGame both track same stats, synced every tick\n+2. **Triple event system** - Three nearly identical event listener patterns\n+3. **Excessive secret checking** - Called on every tick, build, demolish, meltdown\n+4. **Dead code** - `STRUCTURE_COLORS` unused (replaced by HSV colors)\n+5. **Switch statement explosion** - Could be table-driven\n+\n+---\n+\n+## 1. COMPLEXITY HOTSPOTS\n+\n+### 1.1 PhysicsEngine.ts - Melt Temp Upgrade Mapping (lines 214-221)\n+\n+**Current:**\n+```typescript\n+let upgradeType: UpgradeType | null = null;\n+switch (structure) {\n+  case StructureType.FuelRod: upgradeType = UpgradeType.MeltTempFuelRod; break;\n+  case StructureType.Ventilator: upgradeType = UpgradeType.MeltTempVentilator; break;\n+  // ... 6 cases\n+}\n+```\n+\n+**Simplify to:**\n+```typescript\n+const MELT_TEMP_UPGRADES: Partial<Record<StructureType, UpgradeType>> = {\n+  [StructureType.FuelRod]: UpgradeType.MeltTempFuelRod,\n+  [StructureType.Ventilator]: UpgradeType.MeltTempVentilator,\n+  // ...\n+};\n+const upgradeType = MELT_TEMP_UPGRADES[structure];\n+```\n+\n+### 1.2 HeatGameRenderer.ts - getUpgradeEffectDisplay() (lines 925-1070)\n+\n+**Problem:** 150-line switch statement with repeated patterns.\n+\n+**Simplify:** Create a configuration object:\n+```typescript\n+const UPGRADE_EFFECT_CONFIG: Record<UpgradeType, {\n+  description: string;\n+  getValues: (level: number, def: UpgradeDefinition) => { current: string; next: string };\n+}> = { ... };\n+```\n+\n+### 1.3 Duplicate \"ForTier\" Methods in PhysicsEngine\n+\n+These methods have identical patterns:\n+- `getEffectivePowerSaleRateForTier()`\n+- `getEffectiveVentilatorDissipationForTier()`\n+- `getEffectiveFuelHeatGenerationForTier()`\n+- `getEffectiveTurbinePowerForTier()`\n+\n+**Consider:** A single generic method with structure type parameter, or move to BalanceConfig as helper functions.\n+\n+### 1.4 HeatGame.ts - Pass-through Getters (lines 211-340)\n+\n+**30+ getters** that just delegate to sub-components:\n+```typescript\n+getUpgradeLevel(type) { return this.upgradeManager.getUpgradeLevel(type); }\n+isSecretUnlocked(type) { return this.upgradeManager.isSecretUnlocked(type); }\n+// ... many more\n+```\n+\n+**Question:** Does UI need these all through HeatGame, or can it access managers directly?\n+\n+---\n+\n+## 2. REDUNDANT DATA\n+\n+### 2.1 Stats Tracked in Two Places\n+\n+**PhysicsStats** (PhysicsEngine.ts:38-47):\n+- `totalPowerGenerated`\n+- `totalMoneyEarned`\n+- `fuelRodsDepleted`\n+- `ticksAtHighHeat`\n+- `fuelRodsDepletedCool`\n+- `fuelRodsDepletedIce`\n+\n+**GameStats** (HeatGame.ts:43-55):\n+- Same fields, plus `meltdownCount`, `tickCount`, etc.\n+\n+**Current Flow:**\n+```\n+PhysicsEngine.tick() → updates PhysicsStats\n+HeatGame.tick() → syncs from PhysicsStats to GameStats (lines 550-555)\n+```\n+\n+**Problem:** Two sources of truth, synced every tick.\n+\n+**Recommendation:**\n+- Option A: PhysicsEngine owns physics stats, HeatGame owns game stats, no duplication\n+- Option B: Single Stats object shared/passed around\n+\n+### 2.2 Grid Snapshots Created Multiple Times\n+\n+- `render()` → `getGridSnapshot()` (full grid copy)\n+- `getCellTooltip()` → `getCell()` (single cell copy)\n+- Every render creates a full grid snapshot even for static grids\n+\n+**Recommendation:** Consider dirty-flagging or direct grid access for read-only rendering.\n+\n+---\n+\n+## 3. EVENT SYSTEM ISSUES\n+\n+### 3.1 Triple Event System Pattern\n+\n+Three nearly identical implementations:\n+- `GameEventListener` / `eventListeners[]` in HeatGame.ts\n+- `PhysicsEventListener` / `eventListeners[]` in PhysicsEngine.ts\n+- `UpgradeEventListener` / `eventListeners[]` in UpgradeManager.ts\n+\n+Each has identical `addEventListener()`, `removeEventListener()`, `emitEvent()` methods.\n+\n+**Recommendation:** Extract to a shared `EventEmitter<T>` class:\n+```typescript\n+class EventEmitter<T> {\n+  private listeners: ((event: T) => void)[] = [];\n+  on(listener: (event: T) => void) { ... }\n+  off(listener: (event: T) => void) { ... }\n+  emit(event: T) { ... }\n+}\n+```\n+\n+### 3.2 Event Forwarding Chain\n+\n+**Current Flow:**\n+```\n+PhysicsEngine emits 'meltdown'\n+  → HeatGame listener catches it (line 167)\n+  → HeatGame increments meltdownCount\n+  → HeatGame emits 'meltdown' to its listeners\n+  → Renderer catches it for animation\n+```\n+\n+**Double-handling:** Events are caught, re-emitted, caught again.\n+\n+**Alternative:** Single event bus that all components publish/subscribe to.\n+\n+### 3.3 Double-Tapped Events - checkSecretUnlocks()\n+\n+Called from:\n+1. `build()` (line 433)\n+2. `demolish()` (line 459)\n+3. After meltdown event (line 170)\n+4. `tick()` (line 562)\n+\n+**Per tick:** Called at least once, often more if building/demolishing.\n+\n+**Problem:** Most calls find nothing changed. Checking all secrets every time is wasteful.\n+\n+**Recommendation:** Only check when relevant stats change:\n+```typescript\n+// In tick(), after syncing stats:\n+if (physicsStats.fuelRodsDepleted !== previousFuelRodsDepleted) {\n+  this.checkSecretUnlocks();\n+}\n+```\n+\n+---\n+\n+## 4. DEAD CODE / UNUSED\n+\n+### 4.1 STRUCTURE_COLORS in HeatGameRenderer.ts (lines 107-116)\n+\n+```typescript\n+const STRUCTURE_COLORS: Record<StructureType, string> = {\n+  [StructureType.Empty]: '#2a2a2a',\n+  [StructureType.FuelRod]: '#ff6b00',\n+  // ...\n+};\n+```\n+\n+**Never used.** Rendering uses `getStructureHsvColor()` instead (line 346).\n+\n+**Action:** Delete `STRUCTURE_COLORS`.\n+\n+### 4.2 Backward Compatibility Exports (HeatGame.ts)\n+\n+```typescript\n+/** @deprecated Use getGridSize() instead */\n+get GRID_SIZE(): number { ... }\n+\n+export { CORE_SETTINGS };\n+export const GRID_SIZE = CORE_SETTINGS.INITIAL_GRID_SIZE;\n+```\n+\n+**Question:** Is anything still using these? If not, remove.\n+\n+---\n+\n+## 5. EDGE CASE HANDLING NOT NEEDED\n+\n+### 5.1 Redundant Bounds Checking\n+\n+`GridManager.getCell()` checks `isValidPosition()`, but callers often check again:\n+\n+```typescript\n+// HeatGame.build()\n+const cell = this.gridManager.getCellRef(x, y)!;  // Force unwrap - trusts prior canBuild check\n+```\n+\n+**Pattern:** Sometimes trusts prior check, sometimes re-checks. Be consistent.\n+\n+### 5.2 Heat Balance Verification (PhysicsEngine.ts:795-813)\n+\n+```typescript\n+if (!isBalanced) {\n+  console.warn(`[PhysicsEngine] Heat balance violation detected!...`);\n+}\n+```\n+\n+**Question:** Is this debug-only code? Either:\n+- Remove for production (trust the math)\n+- Make it a test/debug mode flag\n+\n+---\n+\n+## 6. INCONSISTENT PATTERNS\n+\n+### 6.1 Upgrade Queries\n+\n+PhysicsEngine gets upgrade info via callbacks:\n+```typescript\n+constructor(\n+  private getUpgradeLevel: (type: UpgradeType) => number,\n+  private isSecretPurchased: (type: SecretUpgradeType) => boolean\n+)\n+```\n+\n+**vs.** HeatGame directly calls `upgradeManager.getUpgradeLevel()`.\n+\n+**Question:** Why the indirection for PhysicsEngine but not elsewhere?\n+\n+### 6.2 Cell Access Patterns\n+\n+- `getCell()` returns a copy\n+- `getCellRef()` returns direct reference\n+- `getGridRef()` returns entire grid reference\n+\n+**Inconsistent:** Sometimes safety copies, sometimes direct mutation.\n+\n+### 6.3 Money Tracking\n+\n+- `HeatGame.money` - private field\n+- `PhysicsStats.totalMoneyEarned` - tracked by physics\n+- `GameStats.totalMoneyEarned` - synced from physics\n+\n+Money earned flows:\n+1. Power sold → PhysicsEngine adds to `stats.totalMoneyEarned`\n+2. HeatGame syncs from physics stats\n+3. HeatGame also does `this.money += result.moneyEarned`\n+\n+Three places tracking money-related values.\n+\n+---\n+\n+## 7. UI EXPOSURE\n+\n+### 7.1 Methods That Could Be Internal\n+\n+These are public but only used internally or not at all:\n+- `getGridSnapshot()` - only used by renderer, could be internal\n+- Multiple `getEffective*ForTier()` methods - UI helpers, consider moving to renderer\n+\n+### 7.2 Missing UI Exposure\n+\n+- No way to see individual cell efficiency at a glance\n+- No \"projected income per tick\" display\n+- Heat balance stats shown but not prominently\n+\n+---\n+\n+## 8. MODERN DEPENDENCIES\n+\n+### Current State (Excellent)\n+- **Zero runtime dependencies** - pure TypeScript\n+- Dev deps: vitest, playwright, typescript, concurrently\n+\n+### Potential Additions (NOT recommended unless needed)\n+\n+| Library | Would Help With | Why Skip |\n+|---------|-----------------|----------|\n+| rxjs | Event system | Overkill for this scale |\n+| immer | Immutable state | Not needed, mutable is fine |\n+| zustand | State management | Would complicate, not simplify |\n+| eventemitter3 | Events | Easy to write in 15 lines |\n+\n+**Verdict:** Keep zero runtime deps. The code is simple enough that adding libraries would add complexity, not remove it.\n+\n+---\n+\n+## 9. ACTION ITEMS (Priority Ordered)\n+\n+### High Impact, Low Effort\n+1. **Delete `STRUCTURE_COLORS`** - dead code\n+2. **Add melt temp upgrade mapping table** - replace switch\n+3. **Cache checkSecretUnlocks()** - only call when stats change\n+\n+### Medium Impact, Medium Effort\n+4. **Unify event system** - extract `EventEmitter<T>` class\n+5. **Consolidate stats ownership** - single source of truth\n+6. **Table-drive getUpgradeEffectDisplay()** - reduce switch explosion\n+\n+### Low Priority / Optional\n+7. **Review pass-through getters** - consider direct manager access\n+8. **Clean up backward compat exports** - if unused\n+\n+---\n+\n+## 10. DATA FLOW DIAGRAMS\n+\n+### Tick Flow\n+```\n+game.tick()\n+  ├─→ tickCount++\n+  ├─→ physicsEngine.tick()\n+  │     ├─→ initCellPerformance()\n+  │     ├─→ processHeatGeneration() → totalHeatGenerated\n+  │     ├─→ processFuelDepletion() → emits 'fuel_depleted'\n+  │     ├─→ processHeatTransfer() → heatLostToEnvironment\n+  │     ├─→ processHeatDissipation() → heatVentilated\n+  │     ├─→ processPowerGeneration() → updates stats.totalPowerGenerated\n+  │     ├─→ processPowerSale() → emits 'power_sold', returns moneyEarned\n+  │     ├─→ processOverheating() → emits 'meltdown'/'structure_melted'\n+  │     └─→ return { moneyEarned, heatBalance }\n+  ├─→ sync stats from physicsEngine to gameStats (REDUNDANT)\n+  ├─→ money += moneyEarned\n+  └─→ checkSecretUnlocks() (OFTEN UNNECESSARY)\n+```\n+\n+### Event Flow\n+```\n+PhysicsEngine event\n+  │\n+  ├─→ (fuel_depleted) → HeatGame forwards → Renderer shows\n+  ├─→ (power_sold) → HeatGame forwards → Renderer shows\n+  ├─→ (structure_melted) → HeatGame forwards → Renderer shows\n+  └─→ (meltdown) → HeatGame increments meltdownCount\n+                 → HeatGame forwards → Renderer animation\n+                 → HeatGame checkSecretUnlocks()\n+```\n+\n+---\n+\n+## Conclusion\n+\n+The architecture is sound and follows good principles (composition, single responsibility). The main issues are:\n+\n+1. **Redundancy** in stats tracking and event forwarding\n+2. **Inefficiency** in secret unlock checking\n+3. **Dead code** (STRUCTURE_COLORS)\n+4. **Switch explosions** that could be tables\n+\n+None of these are critical bugs, but addressing them would make the codebase leaner and more maintainable.",
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "/home/runner/work/claudetest123/claudetest123/test-results",
+        "repeatEach": 1,
+        "retries": 2,
+        "metadata": {
+          "ci": {
+            "commitHref": "https://github.com/bjuergens/claudetest123/commit/53e7d736679d854761f5234a778c13e67227f487",
+            "commitHash": "53e7d736679d854761f5234a778c13e67227f487",
+            "prHref": "https://github.com/bjuergens/claudetest123/pull/19",
+            "prTitle": "Add architecture review document",
+            "prBaseHash": "25cda124d881a8913f4eb9b36114cc294e7bb6a2",
+            "buildHref": "https://github.com/bjuergens/claudetest123/actions/runs/21559743918"
+          },
+          "gitCommit": {
+            "shortHash": "53e7d73",
+            "hash": "53e7d736679d854761f5234a778c13e67227f487",
+            "subject": "Merge 501489df3c06d7540771d0b1588f66e92f96e33a into 25cda124d881a8913f4eb9b36114cc294e7bb6a2",
+            "body": "Merge 501489df3c06d7540771d0b1588f66e92f96e33a into 25cda124d881a8913f4eb9b36114cc294e7bb6a2\n",
+            "author": {
+              "name": "Björn Jürgens",
+              "email": "4362465+bjuergens@users.noreply.github.com",
+              "time": 1769934894000
+            },
+            "committer": {
+              "name": "GitHub",
+              "email": "noreply@github.com",
+              "time": 1769934894000
+            },
+            "branch": "HEAD"
+          },
+          "gitDiff": "diff --git a/ARCHITECTURE_REVIEW.md b/ARCHITECTURE_REVIEW.md\nnew file mode 100644\nindex 0000000..1504d53\n--- /dev/null\n+++ b/ARCHITECTURE_REVIEW.md\n@@ -0,0 +1,368 @@\n+# Architecture Review: Heat Management Game\n+\n+**Review Date:** 2026-02-01\n+**Scope:** Complexity, data flows, event flows, redundancy, patterns\n+\n+---\n+\n+## Executive Summary\n+\n+The codebase is well-structured with clear separation of concerns. However, there are several areas where complexity can be reduced, redundant patterns eliminated, and consistency improved.\n+\n+### Key Findings:\n+1. **Stats duplication** - PhysicsEngine and HeatGame both track same stats, synced every tick\n+2. **Triple event system** - Three nearly identical event listener patterns\n+3. **Excessive secret checking** - Called on every tick, build, demolish, meltdown\n+4. **Dead code** - `STRUCTURE_COLORS` unused (replaced by HSV colors)\n+5. **Switch statement explosion** - Could be table-driven\n+\n+---\n+\n+## 1. COMPLEXITY HOTSPOTS\n+\n+### 1.1 PhysicsEngine.ts - Melt Temp Upgrade Mapping (lines 214-221)\n+\n+**Current:**\n+```typescript\n+let upgradeType: UpgradeType | null = null;\n+switch (structure) {\n+  case StructureType.FuelRod: upgradeType = UpgradeType.MeltTempFuelRod; break;\n+  case StructureType.Ventilator: upgradeType = UpgradeType.MeltTempVentilator; break;\n+  // ... 6 cases\n+}\n+```\n+\n+**Simplify to:**\n+```typescript\n+const MELT_TEMP_UPGRADES: Partial<Record<StructureType, UpgradeType>> = {\n+  [StructureType.FuelRod]: UpgradeType.MeltTempFuelRod,\n+  [StructureType.Ventilator]: UpgradeType.MeltTempVentilator,\n+  // ...\n+};\n+const upgradeType = MELT_TEMP_UPGRADES[structure];\n+```\n+\n+### 1.2 HeatGameRenderer.ts - getUpgradeEffectDisplay() (lines 925-1070)\n+\n+**Problem:** 150-line switch statement with repeated patterns.\n+\n+**Simplify:** Create a configuration object:\n+```typescript\n+const UPGRADE_EFFECT_CONFIG: Record<UpgradeType, {\n+  description: string;\n+  getValues: (level: number, def: UpgradeDefinition) => { current: string; next: string };\n+}> = { ... };\n+```\n+\n+### 1.3 Duplicate \"ForTier\" Methods in PhysicsEngine\n+\n+These methods have identical patterns:\n+- `getEffectivePowerSaleRateForTier()`\n+- `getEffectiveVentilatorDissipationForTier()`\n+- `getEffectiveFuelHeatGenerationForTier()`\n+- `getEffectiveTurbinePowerForTier()`\n+\n+**Consider:** A single generic method with structure type parameter, or move to BalanceConfig as helper functions.\n+\n+### 1.4 HeatGame.ts - Pass-through Getters (lines 211-340)\n+\n+**30+ getters** that just delegate to sub-components:\n+```typescript\n+getUpgradeLevel(type) { return this.upgradeManager.getUpgradeLevel(type); }\n+isSecretUnlocked(type) { return this.upgradeManager.isSecretUnlocked(type); }\n+// ... many more\n+```\n+\n+**Question:** Does UI need these all through HeatGame, or can it access managers directly?\n+\n+---\n+\n+## 2. REDUNDANT DATA\n+\n+### 2.1 Stats Tracked in Two Places\n+\n+**PhysicsStats** (PhysicsEngine.ts:38-47):\n+- `totalPowerGenerated`\n+- `totalMoneyEarned`\n+- `fuelRodsDepleted`\n+- `ticksAtHighHeat`\n+- `fuelRodsDepletedCool`\n+- `fuelRodsDepletedIce`\n+\n+**GameStats** (HeatGame.ts:43-55):\n+- Same fields, plus `meltdownCount`, `tickCount`, etc.\n+\n+**Current Flow:**\n+```\n+PhysicsEngine.tick() → updates PhysicsStats\n+HeatGame.tick() → syncs from PhysicsStats to GameStats (lines 550-555)\n+```\n+\n+**Problem:** Two sources of truth, synced every tick.\n+\n+**Recommendation:**\n+- Option A: PhysicsEngine owns physics stats, HeatGame owns game stats, no duplication\n+- Option B: Single Stats object shared/passed around\n+\n+### 2.2 Grid Snapshots Created Multiple Times\n+\n+- `render()` → `getGridSnapshot()` (full grid copy)\n+- `getCellTooltip()` → `getCell()` (single cell copy)\n+- Every render creates a full grid snapshot even for static grids\n+\n+**Recommendation:** Consider dirty-flagging or direct grid access for read-only rendering.\n+\n+---\n+\n+## 3. EVENT SYSTEM ISSUES\n+\n+### 3.1 Triple Event System Pattern\n+\n+Three nearly identical implementations:\n+- `GameEventListener` / `eventListeners[]` in HeatGame.ts\n+- `PhysicsEventListener` / `eventListeners[]` in PhysicsEngine.ts\n+- `UpgradeEventListener` / `eventListeners[]` in UpgradeManager.ts\n+\n+Each has identical `addEventListener()`, `removeEventListener()`, `emitEvent()` methods.\n+\n+**Recommendation:** Extract to a shared `EventEmitter<T>` class:\n+```typescript\n+class EventEmitter<T> {\n+  private listeners: ((event: T) => void)[] = [];\n+  on(listener: (event: T) => void) { ... }\n+  off(listener: (event: T) => void) { ... }\n+  emit(event: T) { ... }\n+}\n+```\n+\n+### 3.2 Event Forwarding Chain\n+\n+**Current Flow:**\n+```\n+PhysicsEngine emits 'meltdown'\n+  → HeatGame listener catches it (line 167)\n+  → HeatGame increments meltdownCount\n+  → HeatGame emits 'meltdown' to its listeners\n+  → Renderer catches it for animation\n+```\n+\n+**Double-handling:** Events are caught, re-emitted, caught again.\n+\n+**Alternative:** Single event bus that all components publish/subscribe to.\n+\n+### 3.3 Double-Tapped Events - checkSecretUnlocks()\n+\n+Called from:\n+1. `build()` (line 433)\n+2. `demolish()` (line 459)\n+3. After meltdown event (line 170)\n+4. `tick()` (line 562)\n+\n+**Per tick:** Called at least once, often more if building/demolishing.\n+\n+**Problem:** Most calls find nothing changed. Checking all secrets every time is wasteful.\n+\n+**Recommendation:** Only check when relevant stats change:\n+```typescript\n+// In tick(), after syncing stats:\n+if (physicsStats.fuelRodsDepleted !== previousFuelRodsDepleted) {\n+  this.checkSecretUnlocks();\n+}\n+```\n+\n+---\n+\n+## 4. DEAD CODE / UNUSED\n+\n+### 4.1 STRUCTURE_COLORS in HeatGameRenderer.ts (lines 107-116)\n+\n+```typescript\n+const STRUCTURE_COLORS: Record<StructureType, string> = {\n+  [StructureType.Empty]: '#2a2a2a',\n+  [StructureType.FuelRod]: '#ff6b00',\n+  // ...\n+};\n+```\n+\n+**Never used.** Rendering uses `getStructureHsvColor()` instead (line 346).\n+\n+**Action:** Delete `STRUCTURE_COLORS`.\n+\n+### 4.2 Backward Compatibility Exports (HeatGame.ts)\n+\n+```typescript\n+/** @deprecated Use getGridSize() instead */\n+get GRID_SIZE(): number { ... }\n+\n+export { CORE_SETTINGS };\n+export const GRID_SIZE = CORE_SETTINGS.INITIAL_GRID_SIZE;\n+```\n+\n+**Question:** Is anything still using these? If not, remove.\n+\n+---\n+\n+## 5. EDGE CASE HANDLING NOT NEEDED\n+\n+### 5.1 Redundant Bounds Checking\n+\n+`GridManager.getCell()` checks `isValidPosition()`, but callers often check again:\n+\n+```typescript\n+// HeatGame.build()\n+const cell = this.gridManager.getCellRef(x, y)!;  // Force unwrap - trusts prior canBuild check\n+```\n+\n+**Pattern:** Sometimes trusts prior check, sometimes re-checks. Be consistent.\n+\n+### 5.2 Heat Balance Verification (PhysicsEngine.ts:795-813)\n+\n+```typescript\n+if (!isBalanced) {\n+  console.warn(`[PhysicsEngine] Heat balance violation detected!...`);\n+}\n+```\n+\n+**Question:** Is this debug-only code? Either:\n+- Remove for production (trust the math)\n+- Make it a test/debug mode flag\n+\n+---\n+\n+## 6. INCONSISTENT PATTERNS\n+\n+### 6.1 Upgrade Queries\n+\n+PhysicsEngine gets upgrade info via callbacks:\n+```typescript\n+constructor(\n+  private getUpgradeLevel: (type: UpgradeType) => number,\n+  private isSecretPurchased: (type: SecretUpgradeType) => boolean\n+)\n+```\n+\n+**vs.** HeatGame directly calls `upgradeManager.getUpgradeLevel()`.\n+\n+**Question:** Why the indirection for PhysicsEngine but not elsewhere?\n+\n+### 6.2 Cell Access Patterns\n+\n+- `getCell()` returns a copy\n+- `getCellRef()` returns direct reference\n+- `getGridRef()` returns entire grid reference\n+\n+**Inconsistent:** Sometimes safety copies, sometimes direct mutation.\n+\n+### 6.3 Money Tracking\n+\n+- `HeatGame.money` - private field\n+- `PhysicsStats.totalMoneyEarned` - tracked by physics\n+- `GameStats.totalMoneyEarned` - synced from physics\n+\n+Money earned flows:\n+1. Power sold → PhysicsEngine adds to `stats.totalMoneyEarned`\n+2. HeatGame syncs from physics stats\n+3. HeatGame also does `this.money += result.moneyEarned`\n+\n+Three places tracking money-related values.\n+\n+---\n+\n+## 7. UI EXPOSURE\n+\n+### 7.1 Methods That Could Be Internal\n+\n+These are public but only used internally or not at all:\n+- `getGridSnapshot()` - only used by renderer, could be internal\n+- Multiple `getEffective*ForTier()` methods - UI helpers, consider moving to renderer\n+\n+### 7.2 Missing UI Exposure\n+\n+- No way to see individual cell efficiency at a glance\n+- No \"projected income per tick\" display\n+- Heat balance stats shown but not prominently\n+\n+---\n+\n+## 8. MODERN DEPENDENCIES\n+\n+### Current State (Excellent)\n+- **Zero runtime dependencies** - pure TypeScript\n+- Dev deps: vitest, playwright, typescript, concurrently\n+\n+### Potential Additions (NOT recommended unless needed)\n+\n+| Library | Would Help With | Why Skip |\n+|---------|-----------------|----------|\n+| rxjs | Event system | Overkill for this scale |\n+| immer | Immutable state | Not needed, mutable is fine |\n+| zustand | State management | Would complicate, not simplify |\n+| eventemitter3 | Events | Easy to write in 15 lines |\n+\n+**Verdict:** Keep zero runtime deps. The code is simple enough that adding libraries would add complexity, not remove it.\n+\n+---\n+\n+## 9. ACTION ITEMS (Priority Ordered)\n+\n+### High Impact, Low Effort\n+1. **Delete `STRUCTURE_COLORS`** - dead code\n+2. **Add melt temp upgrade mapping table** - replace switch\n+3. **Cache checkSecretUnlocks()** - only call when stats change\n+\n+### Medium Impact, Medium Effort\n+4. **Unify event system** - extract `EventEmitter<T>` class\n+5. **Consolidate stats ownership** - single source of truth\n+6. **Table-drive getUpgradeEffectDisplay()** - reduce switch explosion\n+\n+### Low Priority / Optional\n+7. **Review pass-through getters** - consider direct manager access\n+8. **Clean up backward compat exports** - if unused\n+\n+---\n+\n+## 10. DATA FLOW DIAGRAMS\n+\n+### Tick Flow\n+```\n+game.tick()\n+  ├─→ tickCount++\n+  ├─→ physicsEngine.tick()\n+  │     ├─→ initCellPerformance()\n+  │     ├─→ processHeatGeneration() → totalHeatGenerated\n+  │     ├─→ processFuelDepletion() → emits 'fuel_depleted'\n+  │     ├─→ processHeatTransfer() → heatLostToEnvironment\n+  │     ├─→ processHeatDissipation() → heatVentilated\n+  │     ├─→ processPowerGeneration() → updates stats.totalPowerGenerated\n+  │     ├─→ processPowerSale() → emits 'power_sold', returns moneyEarned\n+  │     ├─→ processOverheating() → emits 'meltdown'/'structure_melted'\n+  │     └─→ return { moneyEarned, heatBalance }\n+  ├─→ sync stats from physicsEngine to gameStats (REDUNDANT)\n+  ├─→ money += moneyEarned\n+  └─→ checkSecretUnlocks() (OFTEN UNNECESSARY)\n+```\n+\n+### Event Flow\n+```\n+PhysicsEngine event\n+  │\n+  ├─→ (fuel_depleted) → HeatGame forwards → Renderer shows\n+  ├─→ (power_sold) → HeatGame forwards → Renderer shows\n+  ├─→ (structure_melted) → HeatGame forwards → Renderer shows\n+  └─→ (meltdown) → HeatGame increments meltdownCount\n+                 → HeatGame forwards → Renderer animation\n+                 → HeatGame checkSecretUnlocks()\n+```\n+\n+---\n+\n+## Conclusion\n+\n+The architecture is sound and follows good principles (composition, single responsibility). The main issues are:\n+\n+1. **Redundancy** in stats tracking and event forwarding\n+2. **Inefficiency** in secret unlock checking\n+3. **Dead code** (STRUCTURE_COLORS)\n+4. **Switch explosions** that could be tables\n+\n+None of these are critical bugs, but addressing them would make the codebase leaner and more maintainable.",
+          "actualWorkers": 1
+        },
+        "id": "chromium",
+        "name": "chromium",
+        "testDir": "/home/runner/work/claudetest123/claudetest123/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 30000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "html",
+        {
+          "outputFolder": "playwright-report"
+        }
+      ],
+      [
+        "list",
+        null
+      ],
+      [
+        "json",
+        {
+          "outputFile": "test-results/results.json"
+        }
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "runAgents": "none",
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.58.0",
+    "workers": 1,
+    "webServer": {
+      "command": "npm run serve",
+      "url": "http://localhost:3000",
+      "reuseExistingServer": false,
+      "timeout": 120000
+    }
+  },
+  "suites": [
+    {
+      "title": "heat-game.spec.ts",
+      "file": "heat-game.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Heat Game E2E Tests",
+          "file": "heat-game.spec.ts",
+          "line": 40,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should load the game and display initial state",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 654,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-01T08:35:50.937Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-2428b-e-and-display-initial-state-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-2428b-e-and-display-initial-state-chromium/attachments/browser-logs-252e98eebb6d2a6fd5612fd184955e74f7d8fa0e.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-1f7f90ca45f76c134f4d",
+              "file": "heat-game.spec.ts",
+              "line": 86,
+              "column": 3
+            },
+            {
+              "title": "should place a Fuel Rod on the grid",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 838,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-01T08:35:53.256Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-05fff-lace-a-Fuel-Rod-on-the-grid-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-05fff-lace-a-Fuel-Rod-on-the-grid-chromium/attachments/browser-logs-daa597c1e58cdd3735064670bc098a56f535a7d5.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-a31bde006f3c29450fad",
+              "file": "heat-game.spec.ts",
+              "line": 116,
+              "column": 3
+            },
+            {
+              "title": "should place multiple structures and observe heat dynamics",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1438,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-01T08:35:54.109Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-edba4-s-and-observe-heat-dynamics-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-edba4-s-and-observe-heat-dynamics-chromium/attachments/browser-logs-a9526112523c68aa24fe78334be3ec2af4a1ba62.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-2ed04ebe32d9c471053a",
+              "file": "heat-game.spec.ts",
+              "line": 148,
+              "column": 3
+            },
+            {
+              "title": "should demolish a structure with right-click",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 751,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-01T08:35:55.562Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-53724--structure-with-right-click-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-53724--structure-with-right-click-chromium/attachments/browser-logs-d97b4f4e87a5cc31e1b5dee61d33b7cf6ee7bb2f.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-ff211d87a2ad19067056",
+              "file": "heat-game.spec.ts",
+              "line": 185,
+              "column": 3
+            },
+            {
+              "title": "should build a power generation setup",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1921,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-01T08:35:56.326Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-206ae-ld-a-power-generation-setup-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-206ae-ld-a-power-generation-setup-chromium/attachments/browser-logs-6db27ca250b3a1a4083663dd5a90aeedb0e1a354.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-abe0096aa1a1c45a3b34",
+              "file": "heat-game.spec.ts",
+              "line": 219,
+              "column": 3
+            },
+            {
+              "title": "should show heat buildup with clustered fuel rods",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1807,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-01T08:35:58.263Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-1ce31-up-with-clustered-fuel-rods-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-1ce31-up-with-clustered-fuel-rods-chromium/attachments/browser-logs-4108f70a5376472a80710ba1c287f526e1cfc9b4.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-ac87d21624a439db98b8",
+              "file": "heat-game.spec.ts",
+              "line": 256,
+              "column": 3
+            },
+            {
+              "title": "should not allow building without sufficient money",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1678,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-01T08:36:00.085Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-ee0f6-ng-without-sufficient-money-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-ee0f6-ng-without-sufficient-money-chromium/attachments/browser-logs-67852c21b9cbe344288f7cfb81aa3e88ded21441.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-b096005e15a85f67c2a8",
+              "file": "heat-game.spec.ts",
+              "line": 294,
+              "column": 3
+            },
+            {
+              "title": "should handle rapid clicking on the grid",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1390,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-02-01T08:36:01.779Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-c664c--rapid-clicking-on-the-grid-chromium/test-finished-1.png"
+                        },
+                        {
+                          "name": "browser-logs",
+                          "contentType": "text/plain",
+                          "path": "/home/runner/work/claudetest123/claudetest123/test-results/heat-game-Heat-Game-E2E-Te-c664c--rapid-clicking-on-the-grid-chromium/attachments/browser-logs-8830c25d0c901f07d14f24299509ec6ff3fc0a0b.log"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "6ea310f0033cac01bab6-1b3f7a34798ed668be9c",
+              "file": "heat-game.spec.ts",
+              "line": 336,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-02-01T08:35:43.478Z",
+    "duration": 19771.774999999998,
+    "expected": 8,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}
