@@ -76,6 +76,30 @@ body {
     border-radius: 4px;
 }
 
+.manual-click-btn {
+    width: 100%;
+    padding: 12px;
+    border: 2px solid #00aa66;
+    border-radius: 4px;
+    background: #00aa66;
+    color: #fff;
+    font-size: 1rem;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.manual-click-btn:hover {
+    background: #00cc77;
+    border-color: #00cc77;
+}
+
+.manual-click-btn:active {
+    background: #008855;
+    border-color: #008855;
+    transform: scale(0.98);
+}
+
 .heat-game-stats {
     display: grid;
     grid-template-columns: repeat(2, 1fr);

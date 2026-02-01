@@ -144,6 +144,7 @@ export class HeatGameRenderer {
   // UI elements
   private uiContainer: HTMLElement | null = null;
   private moneyDisplay: HTMLElement | null = null;
+  private manualClickButton: HTMLButtonElement | null = null;
   private statsDisplay: HTMLElement | null = null;
   private buildMenu: HTMLElement | null = null;
   private upgradeMenu: HTMLElement | null = null;
@@ -582,6 +583,16 @@ export class HeatGameRenderer {
     this.moneyDisplay.className = 'heat-game-money';
     container.appendChild(this.moneyDisplay);
 
+    // Manual click button
+    this.manualClickButton = document.createElement('button');
+    this.manualClickButton.className = 'manual-click-btn';
+    this.manualClickButton.textContent = `Generate €${this.game.getMoneyPerClick()}`;
+    this.manualClickButton.addEventListener('click', () => {
+      this.game.manualGenerate();
+      this.updateManualClickButton();
+    });
+    container.appendChild(this.manualClickButton);
+
     // Stats display
     this.statsDisplay = document.createElement('div');
     this.statsDisplay.className = 'heat-game-stats';
@@ -866,6 +877,8 @@ export class HeatGameRenderer {
       this.moneyDisplay.textContent = `Money: €${this.game.getMoney().toFixed(0)}`;
     }
 
+    this.updateManualClickButton();
+
     if (this.statsDisplay) {
       const stats = this.game.getStats();
       const heatBalance = this.game.getLastTickHeatBalance();
@@ -901,6 +914,12 @@ export class HeatGameRenderer {
     // Update upgrade menus
     this.updateUpgradeMenu();
     this.updateSecretMenu();
+  }
+
+  private updateManualClickButton(): void {
+    if (this.manualClickButton) {
+      this.manualClickButton.textContent = `Generate €${this.game.getMoneyPerClick()}`;
+    }
   }
 
   private getUpgradeEffectDisplay(type: UpgradeType, level: number): { current: string; next: string; description: string } {

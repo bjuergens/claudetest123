@@ -343,6 +343,15 @@ export class HeatGame {
   // MANUAL POWER GENERATION (Clicker)
   // ==========================================================================
 
+  /**
+   * Get the current money earned per manual click (with upgrades)
+   */
+  getMoneyPerClick(): number {
+    const upgradeLevel = this.upgradeManager.getUpgradeLevel(UpgradeType.ManualClickPower);
+    return MANUAL_GENERATION.BASE_MONEY_PER_CLICK +
+      (upgradeLevel * MANUAL_GENERATION.MONEY_PER_LEVEL);
+  }
+
   manualGenerate(): number {
     const upgradeLevel = this.upgradeManager.getUpgradeLevel(UpgradeType.ManualClickPower);
     const moneyEarned = MANUAL_GENERATION.BASE_MONEY_PER_CLICK +
