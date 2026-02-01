@@ -48,7 +48,7 @@ function hsvToRgb(h: number, s: number, v: number): string {
  * Each structure type gets a distinct hue
  */
 const STRUCTURE_HUES: Record<StructureType, number> = {
-  [StructureType.Empty]: 0,       // N/A
+  [StructureType.Empty]: 0,       // N/A (uses lightness from temp)
   [StructureType.FuelRod]: 25,    // Orange
   [StructureType.Ventilator]: 200, // Cyan
   [StructureType.HeatExchanger]: 40, // Gold
@@ -56,11 +56,73 @@ const STRUCTURE_HUES: Record<StructureType, number> = {
   [StructureType.Turbine]: 280,   // Purple
   [StructureType.Substation]: 60, // Yellow
   [StructureType.VoidCell]: 230,  // Dark blue
+  [StructureType.IceCube]: 180,   // Light cyan
+  [StructureType.MoltenSlag]: 15, // Red-orange
+  [StructureType.Plasma]: 300,    // Magenta
 };
 
 /**
- * Get HSV-based color for a structure based on type and tier
+ * Convert HSL to RGB
+ * h: 0-360, s: 0-1, l: 0-1
+ * Returns rgb string
  */
+function hslToRgb(h: number, s: number, l: number): string {
+  h = h % 360;
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs((h / 60) % 2 - 1));
+  const m = l - c / 2;
+  let r = 0, g = 0, b = 0;
+
+  if (h < 60) { r = c; g = x; b = 0; }
+  else if (h < 120) { r = x; g = c; b = 0; }
+  else if (h < 180) { r = 0; g = c; b = x; }
+  else if (h < 240) { r = 0; g = x; b = c; }
+  else if (h < 300) { r = x; g = 0; b = c; }
+  else { r = c; g = 0; b = x; }
+
+  return `rgb(${Math.round((r + m) * 255)}, ${Math.round((g + m) * 255)}, ${Math.round((b + m) * 255)})`;
+}
+
+/**
+ * Get logarithmic lightness from temperature
+ * Maps temp to lightness: 0°C -> 0.2, 100°C -> 0.4, 1000°C -> 0.6, 10000°C -> 0.8
+ * Uses log10 scale for better distribution
+ */
+function getTempLightness(temp: number): number {
+  if (temp <= 0) return 0.2;
+  // log10(1) = 0, log10(10) = 1, log10(100) = 2, log10(1000) = 3, log10(10000) = 4
+  const logTemp = Math.log10(Math.max(1, temp));
+  // Map 0-4+ range to 0.2-0.9 lightness
+  const lightness = 0.2 + Math.min(logTemp / 5, 0.7);
+  return lightness;
+}
+
+/**
+ * Get HSL-based color for a cell based on structure type, tier, and temperature
+ * - Hue: from structure type
+ * - Saturation: from tier (T1=0.5, T2=0.6, T3=0.7, T4=0.8), lower for empty/insulator
+ * - Lightness: from temperature (logarithmic scale)
+ */
+function getStructureHslColor(structure: StructureType, tier: Tier, temp: number): string {
+  const hue = STRUCTURE_HUES[structure];
+
+  // Saturation from tier, lower for empty and insulator
+  let saturation: number;
+  if (structure === StructureType.Empty) {
+    saturation = 0.1; // Low saturation for empty (shows temp as grayscale)
+  } else if (structure === StructureType.Insulator) {
+    saturation = 0.1;
+  } else {
+    saturation = 0.5 + (tier - 1) * 0.1;
+  }
+
+  // Lightness from temperature (logarithmic)
+  const lightness = getTempLightness(temp);
+
+  return hslToRgb(hue, saturation, lightness);
+}
+
+/** @deprecated Use getStructureHslColor instead */
 function getStructureHsvColor(structure: StructureType, tier: Tier): string {
   if (structure === StructureType.Empty) {
     return '#2a2a2a';
@@ -115,6 +177,9 @@ const STRUCTURE_SYMBOLS: Record<StructureType, string> = {
   [StructureType.Turbine]: 'T',
   [StructureType.Substation]: 'S',
   [StructureType.VoidCell]: '⚫',
+  [StructureType.IceCube]: '❄',
+  [StructureType.MoltenSlag]: '~',
+  [StructureType.Plasma]: '☀',
 };
 
 export type CellClickHandler = (x: number, y: number, button: number) => void;
@@ -179,9 +244,7 @@ export class HeatGameRenderer {
 
   private setupGameEventListeners(): void {
     this.game.addEventListener((event: GameEvent) => {
-      if (event.type === 'meltdown') {
-        this.showMeltdownAnimation();
-      } else if (event.type === 'grid_expanded') {
+      if (event.type === 'grid_expanded') {
         this.setupCanvas();
       }
     });
@@ -329,23 +392,27 @@ export class HeatGameRenderer {
     for (let y = 0; y < gridSize; y++) {
       for (let x = 0; x < gridSize; x++) {
         const cell = grid[y][x];
-        if (cell.structure === StructureType.Empty) continue;
-
         const drawX = gridPadding + x * cellSize;
         const drawY = gridPadding + y * cellSize;
 
-        // Draw structure background with HSV color based on type and tier
-        this.ctx.fillStyle = getStructureHsvColor(cell.structure, cell.tier);
+        // Draw cell background with HSL color based on type, tier, and temperature
+        // Empty tiles show temperature as grayscale
+        this.ctx.fillStyle = getStructureHslColor(cell.structure, cell.tier, cell.heat);
         this.ctx.fillRect(drawX + 2, drawY + 2, cellSize - 4, cellSize - 4);
+
+        // Skip bars and symbols for empty tiles
+        if (cell.structure === StructureType.Empty) continue;
 
         // Get cell performance data
         const perf = this.game.getCellPerformance(x, y);
 
-        // Draw top bar (lifetime for fuel, performance for turbine/substation)
+        // Draw top bar (lifetime for fuel/slag/plasma, performance for turbine/substation)
         this.renderTopBar(cell, perf, drawX, drawY, cellSize, barHeight, barPadding);
 
-        // Draw right temperature bar (thermometer)
-        this.renderTempBar(cell, drawX, drawY, cellSize, barWidth, barPadding);
+        // Draw right temperature bar (thermometer) - skip for slag/plasma
+        if (cell.structure !== StructureType.MoltenSlag && cell.structure !== StructureType.Plasma) {
+          this.renderTempBar(cell, drawX, drawY, cellSize, barWidth, barPadding);
+        }
 
         // Draw bottom heat exchange bar
         this.renderHeatExchangeBar(perf, drawX, drawY, cellSize, barHeight, barPadding);
@@ -383,7 +450,7 @@ export class HeatGameRenderer {
   }
 
   /**
-   * Render top bar showing lifetime (fuel) or performance (turbine/substation)
+   * Render top bar showing lifetime (fuel/slag/plasma) or performance (turbine/substation)
    */
   private renderTopBar(
     cell: Cell,
@@ -411,6 +478,16 @@ export class HeatGameRenderer {
       fillRatio = cell.lifetime / maxLifetime;
       // Color gradient from green (full) to red (depleted)
       fillColor = fillRatio > 0.5 ? '#00ff00' : fillRatio > 0.25 ? '#ffff00' : '#ff6600';
+    } else if (cell.structure === StructureType.MoltenSlag) {
+      // Molten slag: show time remaining (10 ticks max)
+      const maxLifetime = STRUCTURE_BASE_STATS[StructureType.MoltenSlag].baseLifetime; // 10
+      fillRatio = cell.lifetime / maxLifetime;
+      fillColor = '#ff6600'; // Orange for slag
+    } else if (cell.structure === StructureType.Plasma) {
+      // Plasma: show time remaining (100 ticks max)
+      const maxLifetime = STRUCTURE_BASE_STATS[StructureType.Plasma].baseLifetime; // 100
+      fillRatio = cell.lifetime / maxLifetime;
+      fillColor = '#ff00ff'; // Magenta for plasma
     } else if (cell.structure === StructureType.Turbine && perf) {
       // Turbine: show power generation performance
       const baseStats = STRUCTURE_BASE_STATS[StructureType.Turbine];
@@ -559,10 +636,10 @@ export class HeatGameRenderer {
     this.ctx.textBaseline = 'top';
 
     const money = this.game.getMoney();
-    const meltdowns = this.game.getMeltdownCount();
+    const stats = this.game.getStats();
 
     this.ctx.fillText(`Money: €${money.toFixed(0)}`, 5, 5);
-    this.ctx.fillText(`Meltdowns: ${meltdowns}`, 5, 22);
+    this.ctx.fillText(`Refund: ${Math.round(this.game.getRefundRate() * 100)}%`, 5, 22);
   }
 
   // Create HTML UI elements
@@ -621,9 +698,10 @@ export class HeatGameRenderer {
     // Add title
     const title = document.createElement('div');
     title.className = 'menu-title';
-    title.textContent = 'Build Structures';
+    title.textContent = 'Buy Structures';
     this.buildMenu.appendChild(title);
 
+    // Base buildable structures
     const buildableStructures = [
       StructureType.FuelRod,
       StructureType.Ventilator,
@@ -632,6 +710,21 @@ export class HeatGameRenderer {
       StructureType.Turbine,
       StructureType.Substation,
     ];
+
+    // Add Sell All button at the top
+    const sellAllWrapper = document.createElement('div');
+    sellAllWrapper.className = 'build-item sell-all-item';
+    const sellAllBtn = document.createElement('button');
+    sellAllBtn.className = 'build-btn sell-all-btn';
+    sellAllBtn.textContent = 'Sell All Structures';
+    sellAllBtn.addEventListener('click', () => {
+      const refund = this.game.sellAll();
+      if (refund > 0) {
+        // Could add a toast notification here
+      }
+    });
+    sellAllWrapper.appendChild(sellAllBtn);
+    this.buildMenu.appendChild(sellAllWrapper);
 
     // Initialize tier for each structure
     for (const structure of buildableStructures) {
@@ -932,9 +1025,9 @@ export class HeatGameRenderer {
       this.statsDisplay.innerHTML = `
         <div>Total Power: ${this.game.getTotalPowerGenerated().toFixed(1)}</div>
         <div>Total Earned: €${this.game.getTotalMoneyEarned().toFixed(0)}</div>
-        <div>Meltdowns: ${stats.meltdownCount}</div>
+        <div>Min Temp: ${stats.allTilesAboveTemp.toFixed(0)}°C</div>
         <div>Ticks: ${stats.tickCount}</div>
-        <div>Clicks: ${stats.manualClicks}</div>
+        <div>Sold: ${stats.sellCount}</div>
         ${heatBalanceHtml}
       `;
     }
@@ -1179,26 +1272,6 @@ export class HeatGameRenderer {
     }
 
     secretList.innerHTML = html;
-  }
-
-  private showMeltdownAnimation(): void {
-    let flashes = 0;
-    const flashInterval = setInterval(() => {
-      if (flashes >= 6) {
-        clearInterval(flashInterval);
-        this.render();
-        return;
-      }
-
-      if (flashes % 2 === 0) {
-        this.ctx.fillStyle = 'rgba(255, 0, 0, 0.8)';
-        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-      } else {
-        this.render();
-      }
-
-      flashes++;
-    }, 100);
   }
 
   // Configuration

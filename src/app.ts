@@ -362,7 +362,6 @@ function handleGameCrash(error: unknown, game: HeatGame): void {
     gameState: {
       money: game.getMoney(),
       ticks: game.getTickCount(),
-      meltdowns: game.getMeltdownCount(),
       totalPower: game.getTotalPowerGenerated(),
     },
   };

@@ -74,6 +74,9 @@ export enum StructureType {
   Turbine = 'turbine',
   Substation = 'substation',
   VoidCell = 'void_cell', // Secret structure
+  IceCube = 'ice_cube', // Secret structure - cools on melt
+  MoltenSlag = 'molten_slag', // Left behind after structure melts (10 ticks)
+  Plasma = 'plasma', // Left behind after exotic fuel reaches 100000°C (100 ticks)
 }
 
 export interface StructureBaseStats {
@@ -162,7 +165,7 @@ export const STRUCTURE_BASE_STATS: Record<StructureType, StructureBaseStats> = {
   [StructureType.FuelRod]: {
     name: 'Fuel Rod',
     baseCost: 10,
-    meltTemp: 1000, // Lowered to make meltdowns achievable with new heat exchange algorithm
+    meltTemp: 2000, // High melt temp - when fuel melts, surrounding structures likely already melted
     conductivity: 0.3,
     heatGeneration: 100, // T1: 100 heat/tick - high enough to cause meltdowns when clustered
     heatDissipation: 0,
@@ -262,6 +265,51 @@ export const STRUCTURE_BASE_STATS: Record<StructureType, StructureBaseStats> = {
     baseLifetime: 0,
     canBeTiered: true,
     isSecret: true, // Unlocked via secret
+  },
+
+  [StructureType.IceCube]: {
+    name: 'Ice Cube',
+    baseCost: 5,
+    meltTemp: 100, // Melts at 100°C, leaving 0°C tile + slag
+    conductivity: 0.3,
+    heatGeneration: 0,
+    heatDissipation: 0,
+    powerGeneration: 0,
+    maxHeatConsumption: 0,
+    powerSaleRate: 0,
+    baseLifetime: 0,
+    canBeTiered: false,
+    isSecret: true, // Unlocked via secret
+  },
+
+  [StructureType.MoltenSlag]: {
+    name: 'Molten Slag',
+    baseCost: 0,
+    meltTemp: Infinity, // Cannot melt further
+    conductivity: 0.5, // Moderately conductive
+    heatGeneration: 0,
+    heatDissipation: 0,
+    powerGeneration: 0,
+    maxHeatConsumption: 0,
+    powerSaleRate: 0,
+    baseLifetime: 10, // Disappears after 10 ticks
+    canBeTiered: false,
+    isSecret: false,
+  },
+
+  [StructureType.Plasma]: {
+    name: 'Plasma',
+    baseCost: 0,
+    meltTemp: Infinity, // Cannot melt further
+    conductivity: 1.0, // Very conductive (hot plasma spreads heat fast)
+    heatGeneration: 0,
+    heatDissipation: 0,
+    powerGeneration: 0,
+    maxHeatConsumption: 0,
+    powerSaleRate: 0,
+    baseLifetime: 100, // Disappears after 100 ticks
+    canBeTiered: false,
+    isSecret: false,
   },
 };
 
@@ -495,9 +543,12 @@ export enum SecretUpgradeType {
   ReactorExpansion4 = 'reactor_expansion_4', // 19 -> 20
   VoidCellUnlock = 'void_cell_unlock',
   Overclock = 'overclock',
-  Salvage = 'salvage',
+  Salvage = 'salvage', // 50% -> 75% refund after selling 100 structures
+  SalvageMaster = 'salvage_master', // 75% -> 100% refund after selling all from full grid
   FuelMeltTempBonus = 'fuel_melt_temp_bonus', // Unlocked by keeping fuel rods under 200°C
   CoolRunning = 'cool_running', // Unlocked by keeping fuel rods under 100°C
+  IceCubeUnlock = 'ice_cube_unlock', // Unlocked when all tiles > 100°C
+  NachMirDieSintflut = 'nach_mir_die_sintflut', // Sell All also cools tiles to max 100°C
 }
 
 export interface SecretUpgradeDefinition {
@@ -576,9 +627,17 @@ export const SECRET_UPGRADE_DEFINITIONS: Record<SecretUpgradeType, SecretUpgrade
 
   [SecretUpgradeType.Salvage]: {
     name: 'Salvage Operations',
-    description: 'Get 50% refund when demolishing structures',
+    description: 'Increase sell refund from 50% to 75%',
     hint: '???',
     cost: 2000,
+    isToggle: false,
+  },
+
+  [SecretUpgradeType.SalvageMaster]: {
+    name: 'Salvage Master',
+    description: 'Increase sell refund to 100% (full price)',
+    hint: '???',
+    cost: 10000,
     isToggle: false,
   },
 
@@ -597,6 +656,22 @@ export const SECRET_UPGRADE_DEFINITIONS: Record<SecretUpgradeType, SecretUpgrade
     cost: 10000,
     isToggle: false,
   },
+
+  [SecretUpgradeType.IceCubeUnlock]: {
+    name: 'Cryogenic Technology',
+    description: 'Unlock Ice Cubes - structures that cool to 0°C when they melt',
+    hint: '???',
+    cost: 1,
+    isToggle: false,
+  },
+
+  [SecretUpgradeType.NachMirDieSintflut]: {
+    name: 'Nach mir die Sintflut',
+    description: 'Sell All also cools all tiles above 100°C down to 100°C',
+    hint: '???',
+    cost: 1000,
+    isToggle: false,
+  },
 };
 
 // =============================================================================
@@ -604,7 +679,7 @@ export const SECRET_UPGRADE_DEFINITIONS: Record<SecretUpgradeType, SecretUpgrade
 // =============================================================================
 
 export interface SecretUnlockCondition {
-  type: 'meltdown' | 'fill_grid' | 'survive_heat' | 'total_earned' | 'demolish_count' | 'fuel_depleted_cool' | 'fuel_depleted_ice';
+  type: 'meltdown' | 'fill_grid' | 'survive_heat' | 'total_earned' | 'sell_count' | 'fuel_depleted_cool' | 'fuel_depleted_ice' | 'all_tiles_above_temp' | 'sell_all_full_grid';
   /** Threshold value for the condition */
   threshold: number;
   /** For survive_heat: percentage of max temp (0.9 = 90%) */
@@ -649,8 +724,13 @@ export const SECRET_UNLOCK_CONDITIONS: Record<SecretUpgradeType, SecretUnlockCon
   },
 
   [SecretUpgradeType.Salvage]: {
-    type: 'demolish_count',
-    threshold: 100, // Demolish 100 structures
+    type: 'sell_count',
+    threshold: 100, // Sell 100 structures
+  },
+
+  [SecretUpgradeType.SalvageMaster]: {
+    type: 'sell_all_full_grid',
+    threshold: 1, // Sell all when grid is full
   },
 
   [SecretUpgradeType.FuelMeltTempBonus]: {
@@ -661,6 +741,16 @@ export const SECRET_UNLOCK_CONDITIONS: Record<SecretUpgradeType, SecretUnlockCon
   [SecretUpgradeType.CoolRunning]: {
     type: 'fuel_depleted_ice',
     threshold: 10, // Deplete 10 fuel rods that never exceeded 100°C
+  },
+
+  [SecretUpgradeType.IceCubeUnlock]: {
+    type: 'all_tiles_above_temp',
+    threshold: 100, // All tiles above 100°C
+  },
+
+  [SecretUpgradeType.NachMirDieSintflut]: {
+    type: 'all_tiles_above_temp',
+    threshold: 5000, // All tiles above 5000°C
   },
 };
 
@@ -734,10 +824,12 @@ export function getSecretUnlockProgress(
     meltdownCount: number;
     filledCells: number;
     totalMoneyEarned: number;
-    demolishCount: number;
+    sellCount: number;
     ticksAtHighHeat: number;
     fuelRodsDepletedCool: number;
     fuelRodsDepletedIce: number;
+    allTilesAboveTemp?: number; // Minimum temperature across all tiles
+    sellAllFullGrid?: boolean; // Whether a sell all from full grid just happened
   }
 ): { current: number; required: number; unlocked: boolean } {
   const condition = SECRET_UNLOCK_CONDITIONS[upgradeType];
@@ -753,8 +845,8 @@ export function getSecretUnlockProgress(
     case 'total_earned':
       current = gameStats.totalMoneyEarned;
       break;
-    case 'demolish_count':
-      current = gameStats.demolishCount;
+    case 'sell_count':
+      current = gameStats.sellCount;
       break;
     case 'survive_heat':
       current = gameStats.ticksAtHighHeat;
@@ -764,6 +856,17 @@ export function getSecretUnlockProgress(
       break;
     case 'fuel_depleted_ice':
       current = gameStats.fuelRodsDepletedIce;
+      break;
+    case 'all_tiles_above_temp':
+      // Current is the minimum temp, threshold is the required min temp
+      current = gameStats.allTilesAboveTemp ?? 0;
+      return {
+        current,
+        required: condition.threshold,
+        unlocked: current > condition.threshold, // All tiles must be ABOVE threshold
+      };
+    case 'sell_all_full_grid':
+      current = gameStats.sellAllFullGrid ? 1 : 0;
       break;
   }
 

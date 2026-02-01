@@ -48,11 +48,11 @@ export interface SecretState {
 export interface GameStats {
   // Game-owned stats
   totalMoneyEarned: number;
-  meltdownCount: number;
   tickCount: number;
-  demolishCount: number;
+  sellCount: number; // Renamed from demolishCount
   manualClicks: number;
   structuresBuilt: number;
+  sellAllFullGrid: boolean; // Flag for unlocking SalvageMaster
 }
 
 /**
@@ -66,6 +66,8 @@ export interface CombinedStats extends GameStats {
   fuelRodsDepleted: number;
   fuelRodsDepletedCool: number;
   fuelRodsDepletedIce: number;
+  // Computed for UI
+  allTilesAboveTemp: number;
 }
 
 export interface GameState {
@@ -81,16 +83,16 @@ export interface GameState {
 export interface GameEvent {
   type:
     | 'structure_built'
-    | 'structure_destroyed'
+    | 'structure_sold'
     | 'structure_melted'
-    | 'meltdown'
     | 'power_sold'
     | 'fuel_depleted'
     | 'manual_click'
     | 'upgrade_purchased'
     | 'secret_unlocked'
     | 'secret_purchased'
-    | 'grid_expanded';
+    | 'grid_expanded'
+    | 'sell_all';
   x?: number;
   y?: number;
   structure?: StructureType;
@@ -139,11 +141,11 @@ export class HeatGame {
   private createInitialStats(): GameStats {
     return {
       totalMoneyEarned: 0,
-      meltdownCount: 0,
       tickCount: 0,
-      demolishCount: 0,
+      sellCount: 0,
       manualClicks: 0,
       structuresBuilt: 0,
+      sellAllFullGrid: false,
     };
   }
 
@@ -174,10 +176,6 @@ export class HeatGame {
           structure: event.structure,
           tier: event.tier,
         });
-      } else if (event.type === 'meltdown') {
-        this.stats.meltdownCount++;
-        this.emitEvent({ type: 'meltdown' });
-        this.checkSecretUnlocks();
       }
     });
 
@@ -234,10 +232,6 @@ export class HeatGame {
     return this.stats.tickCount;
   }
 
-  getMeltdownCount(): number {
-    return this.stats.meltdownCount;
-  }
-
   getTotalPowerGenerated(): number {
     return this.physicsEngine.getStats().totalPowerGenerated;
   }
@@ -259,7 +253,22 @@ export class HeatGame {
       fuelRodsDepleted: physicsStats.fuelRodsDepleted,
       fuelRodsDepletedCool: physicsStats.fuelRodsDepletedCool,
       fuelRodsDepletedIce: physicsStats.fuelRodsDepletedIce,
+      allTilesAboveTemp: this.physicsEngine.getMinGridTemp(),
     };
+  }
+
+  /**
+   * Get the refund rate based on purchased secrets
+   * Default: 50%, with Salvage: 75%, with SalvageMaster: 100%
+   */
+  getRefundRate(): number {
+    if (this.upgradeManager.isSecretPurchased(SecretUpgradeType.SalvageMaster)) {
+      return 1.0;
+    }
+    if (this.upgradeManager.isSecretPurchased(SecretUpgradeType.Salvage)) {
+      return 0.75;
+    }
+    return 0.5;
   }
 
   getUpgradeLevel(type: UpgradeType): number {
@@ -400,11 +409,20 @@ export class HeatGame {
     if (!cell) return false;
     if (cell.structure !== StructureType.Empty) return false;
 
+    // Cannot build slag or plasma
+    if (structure === StructureType.MoltenSlag || structure === StructureType.Plasma) {
+      return false;
+    }
+
     // Check if structure is secret and not unlocked
     const baseStats = STRUCTURE_BASE_STATS[structure];
     if (baseStats.isSecret) {
       if (structure === StructureType.VoidCell &&
           !this.upgradeManager.isSecretPurchased(SecretUpgradeType.VoidCellUnlock)) {
+        return false;
+      }
+      if (structure === StructureType.IceCube &&
+          !this.upgradeManager.isSecretPurchased(SecretUpgradeType.IceCubeUnlock)) {
         return false;
       }
     }
@@ -456,30 +474,131 @@ export class HeatGame {
     return true;
   }
 
-  demolish(x: number, y: number): boolean {
+  /**
+   * Sell a structure at the given position
+   * Cannot sell MoltenSlag or Plasma - they decay on their own
+   */
+  sell(x: number, y: number): boolean {
     const cell = this.gridManager.getCell(x, y);
     if (!cell || cell.structure === StructureType.Empty) return false;
 
+    // Cannot sell molten slag or plasma - they decay on their own
+    if (cell.structure === StructureType.MoltenSlag || cell.structure === StructureType.Plasma) {
+      return false;
+    }
+
     const oldStructure = cell.structure;
     const oldTier = cell.tier;
+    const cellHeat = cell.heat;
 
-    // Base 75% refund on sell
-    const refund = Math.floor(getStructureCost(oldStructure, oldTier) * 0.75);
+    // Refund based on upgrade level: 50% default, 75% with Salvage, 100% with SalvageMaster
+    const refundRate = this.getRefundRate();
+    const refund = Math.floor(getStructureCost(oldStructure, oldTier) * refundRate);
     this.money += refund;
 
     this.gridManager.resetCell(x, y);
-    this.stats.demolishCount++;
+    // Preserve the heat on the now-empty tile
+    const emptyCell = this.gridManager.getCellRef(x, y);
+    if (emptyCell) {
+      emptyCell.heat = cellHeat;
+    }
+
+    this.stats.sellCount++;
 
     this.emitEvent({
-      type: 'structure_destroyed',
+      type: 'structure_sold',
       x,
       y,
       structure: oldStructure,
       tier: oldTier,
+      amount: refund,
     });
 
     this.checkSecretUnlocks();
     return true;
+  }
+
+  /**
+   * Sell all structures on the grid (except MoltenSlag and Plasma)
+   * Returns the total refund amount
+   */
+  sellAll(): number {
+    const gridSize = this.gridManager.getSize();
+    const filledBefore = this.gridManager.getFilledCellCount();
+    const gridCapacity = gridSize * gridSize;
+
+    let totalRefund = 0;
+    let soldCount = 0;
+
+    // Collect all sellable structures first
+    const toSell: { x: number; y: number }[] = [];
+    for (let y = 0; y < gridSize; y++) {
+      for (let x = 0; x < gridSize; x++) {
+        const cell = this.gridManager.getCellRef(x, y);
+        if (!cell || cell.structure === StructureType.Empty) continue;
+        if (cell.structure === StructureType.MoltenSlag || cell.structure === StructureType.Plasma) continue;
+        toSell.push({ x, y });
+      }
+    }
+
+    // Calculate refund
+    const refundRate = this.getRefundRate();
+    for (const { x, y } of toSell) {
+      const cell = this.gridManager.getCellRef(x, y)!;
+      const refund = Math.floor(getStructureCost(cell.structure, cell.tier) * refundRate);
+      totalRefund += refund;
+    }
+
+    // Add refund to money
+    this.money += totalRefund;
+
+    // If "Nach mir die Sintflut" is purchased, cool all tiles above 100°C to 100°C
+    const coolTiles = this.upgradeManager.isSecretPurchased(SecretUpgradeType.NachMirDieSintflut);
+
+    // Now sell all and optionally cool
+    for (let y = 0; y < gridSize; y++) {
+      for (let x = 0; x < gridSize; x++) {
+        const cell = this.gridManager.getCellRef(x, y);
+        if (!cell) continue;
+
+        const isSellable = cell.structure !== StructureType.Empty &&
+                           cell.structure !== StructureType.MoltenSlag &&
+                           cell.structure !== StructureType.Plasma;
+
+        if (isSellable) {
+          const cellHeat = coolTiles ? Math.min(cell.heat, 100) : cell.heat;
+          this.gridManager.resetCell(x, y);
+          const emptyCell = this.gridManager.getCellRef(x, y);
+          if (emptyCell) {
+            emptyCell.heat = cellHeat;
+          }
+          soldCount++;
+        } else if (coolTiles && cell.heat > 100) {
+          // Cool empty/slag/plasma tiles too
+          cell.heat = 100;
+        }
+      }
+    }
+
+    this.stats.sellCount += soldCount;
+
+    // Check if grid was full before selling (for SalvageMaster unlock)
+    if (filledBefore === gridCapacity && soldCount > 0) {
+      this.stats.sellAllFullGrid = true;
+    }
+
+    this.emitEvent({
+      type: 'sell_all',
+      amount: totalRefund,
+    });
+
+    this.checkSecretUnlocks();
+    return totalRefund;
+  }
+
+  /** @deprecated Use sell() instead */
+  demolish(x: number, y: number): boolean {
+    return this.sell(x, y);
   }
 
   // ==========================================================================
@@ -545,13 +664,15 @@ export class HeatGame {
     // Query physics stats from PhysicsEngine (single source of truth)
     const physicsStats = this.physicsEngine.getStats();
     const unlockStats = {
-      meltdownCount: this.stats.meltdownCount,
+      meltdownCount: 0, // Meltdowns no longer tracked - structures just melt to slag
       filledCells: this.gridManager.getFilledCellCount(),
       totalMoneyEarned: this.stats.totalMoneyEarned,
-      demolishCount: this.stats.demolishCount,
+      sellCount: this.stats.sellCount,
       ticksAtHighHeat: physicsStats.ticksAtHighHeat,
       fuelRodsDepletedCool: physicsStats.fuelRodsDepletedCool,
       fuelRodsDepletedIce: physicsStats.fuelRodsDepletedIce,
+      allTilesAboveTemp: this.physicsEngine.getMinGridTemp(),
+      sellAllFullGrid: this.stats.sellAllFullGrid,
     };
 
     this.upgradeManager.checkSecretUnlocks(unlockStats);
@@ -573,6 +694,11 @@ export class HeatGame {
     // Add money earned from power sales (HeatGame owns money tracking)
     this.money += result.moneyEarned;
     this.stats.totalMoneyEarned += result.moneyEarned;
+
+    // Reset sellAllFullGrid flag after each tick (it's only true for the tick after a sell all)
+    if (this.stats.sellAllFullGrid) {
+      this.stats.sellAllFullGrid = false;
+    }
 
     // Check secret unlocks
     this.checkSecretUnlocks();
@@ -604,9 +730,17 @@ export class HeatGame {
     // Restore grid
     game.gridManager.restoreFromState(state.grid, state.gridSize);
 
-    // Restore money and game-owned stats
+    // Restore money and game-owned stats (handle legacy field names)
     game.money = state.money;
-    game.stats = { ...state.stats };
+    const legacyStats = state.stats as unknown as Record<string, unknown>;
+    game.stats = {
+      totalMoneyEarned: (legacyStats.totalMoneyEarned as number) ?? 0,
+      tickCount: (legacyStats.tickCount as number) ?? 0,
+      sellCount: (legacyStats.sellCount as number) ?? (legacyStats.demolishCount as number) ?? 0,
+      manualClicks: (legacyStats.manualClicks as number) ?? 0,
+      structuresBuilt: (legacyStats.structuresBuilt as number) ?? 0,
+      sellAllFullGrid: (legacyStats.sellAllFullGrid as boolean) ?? false,
+    };
 
     // Restore upgrades
     game.upgradeManager.restoreUpgradeState(state.upgrades);
@@ -617,14 +751,13 @@ export class HeatGame {
       game.physicsEngine.setStats(state.physicsStats);
     } else {
       // Legacy save format - physics stats were in state.stats
-      const legacyStats = state.stats as unknown as Record<string, number>;
       game.physicsEngine.setStats({
-        totalPowerGenerated: legacyStats.totalPowerGenerated ?? 0,
-        totalMoneyEarned: legacyStats.totalMoneyEarned ?? 0,
-        fuelRodsDepleted: legacyStats.fuelRodsDepleted ?? 0,
-        ticksAtHighHeat: legacyStats.ticksAtHighHeat ?? 0,
-        fuelRodsDepletedCool: legacyStats.fuelRodsDepletedCool ?? 0,
-        fuelRodsDepletedIce: legacyStats.fuelRodsDepletedIce ?? 0,
+        totalPowerGenerated: (legacyStats.totalPowerGenerated as number) ?? 0,
+        totalMoneyEarned: (legacyStats.totalMoneyEarned as number) ?? 0,
+        fuelRodsDepleted: (legacyStats.fuelRodsDepleted as number) ?? 0,
+        ticksAtHighHeat: (legacyStats.ticksAtHighHeat as number) ?? 0,
+        fuelRodsDepletedCool: (legacyStats.fuelRodsDepletedCool as number) ?? 0,
+        fuelRodsDepletedIce: (legacyStats.fuelRodsDepletedIce as number) ?? 0,
       });
     }
 

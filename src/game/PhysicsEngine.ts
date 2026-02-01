@@ -32,7 +32,7 @@ import {
 import { Cell, GridManager } from './GridManager.js';
 
 export interface PhysicsEvent {
-  type: 'fuel_depleted' | 'power_sold' | 'structure_melted' | 'meltdown';
+  type: 'fuel_depleted' | 'power_sold' | 'structure_melted';
   x?: number;
   y?: number;
   tier?: Tier;
@@ -667,34 +667,41 @@ export class PhysicsEngine {
   }
 
   /**
-   * Process overheating and meltdowns
-   * Returns true if a meltdown occurred
+   * Process overheating - structures melt and leave slag/plasma behind
+   * No special meltdown handling - fuel rods melt like any other structure
    */
-  processOverheating(): boolean {
+  processOverheating(): void {
     const grid = this.gridManager.getGridRef();
     const gridSize = this.gridManager.getSize();
-    let meltdown = false;
-    const meltedCells: { x: number; y: number; structure: StructureType; tier: Tier }[] = [];
+    const meltedCells: { x: number; y: number; structure: StructureType; tier: Tier; heat: number; isExotic: boolean }[] = [];
 
     for (let y = 0; y < gridSize; y++) {
       for (let x = 0; x < gridSize; x++) {
         const cell = grid[y][x];
         if (cell.structure === StructureType.Empty) continue;
+        if (cell.structure === StructureType.MoltenSlag) continue;
+        if (cell.structure === StructureType.Plasma) continue;
+
+        // Exotic fuel rods don't melt, but turn to plasma at 100000°C
+        if (cell.structure === StructureType.FuelRod && cell.isExotic) {
+          if (cell.heat >= 100000) {
+            meltedCells.push({ x, y, structure: cell.structure, tier: cell.tier, heat: cell.heat, isExotic: true });
+          }
+          continue; // Skip normal melt temp check for exotic fuel
+        }
 
         const meltTemp = this.getEffectiveMeltTemp(cell.structure);
         if (cell.heat > meltTemp) {
-          if (cell.structure === StructureType.FuelRod) {
-            meltdown = true;
-          } else {
-            meltedCells.push({ x, y, structure: cell.structure, tier: cell.tier });
-          }
+          meltedCells.push({ x, y, structure: cell.structure, tier: cell.tier, heat: cell.heat, isExotic: cell.isExotic });
         }
       }
     }
 
-    // Melt non-fuel structures
-    for (const { x, y, structure, tier } of meltedCells) {
-      this.gridManager.resetCell(x, y);
+    // Process melted structures - leave slag or plasma behind
+    for (const { x, y, structure, tier, heat, isExotic } of meltedCells) {
+      const cell = grid[y][x];
+
+      // Emit structure melted event
       this.emitEvent({
         type: 'structure_melted',
         x,
@@ -702,14 +709,63 @@ export class PhysicsEngine {
         structure,
         tier,
       });
-    }
 
-    if (meltdown) {
-      this.gridManager.clearAll();
-      this.emitEvent({ type: 'meltdown' });
-    }
+      // Determine what to leave behind
+      if (isExotic && structure === StructureType.FuelRod) {
+        // Exotic fuel rods turn to plasma (100 ticks)
+        cell.structure = StructureType.Plasma;
+        cell.tier = Tier.T1;
+        cell.lifetime = STRUCTURE_BASE_STATS[StructureType.Plasma].baseLifetime; // 100 ticks
+        cell.isExotic = false;
+        // Keep the heat
+      } else if (structure === StructureType.IceCube) {
+        // Ice cube melting cools the tile to 0°C and leaves slag
+        cell.structure = StructureType.MoltenSlag;
+        cell.tier = Tier.T1;
+        cell.lifetime = STRUCTURE_BASE_STATS[StructureType.MoltenSlag].baseLifetime; // 10 ticks
+        cell.heat = 0; // Ice cube special: cool to 0°C
+        cell.isExotic = false;
+      } else {
+        // Normal structures leave molten slag (10 ticks)
+        cell.structure = StructureType.MoltenSlag;
+        cell.tier = Tier.T1;
+        cell.lifetime = STRUCTURE_BASE_STATS[StructureType.MoltenSlag].baseLifetime; // 10 ticks
+        cell.isExotic = false;
+        // Keep the heat
+      }
 
-    return meltdown;
+      cell.power = 0;
+      cell.maxTempReached = 0;
+    }
+  }
+
+  /**
+   * Process slag and plasma decay - remove when lifetime expires
+   */
+  processSlagPlasmaDecay(): void {
+    const grid = this.gridManager.getGridRef();
+    const gridSize = this.gridManager.getSize();
+
+    for (let y = 0; y < gridSize; y++) {
+      for (let x = 0; x < gridSize; x++) {
+        const cell = grid[y][x];
+        if (cell.structure !== StructureType.MoltenSlag && cell.structure !== StructureType.Plasma) {
+          continue;
+        }
+
+        if (cell.lifetime > 0) {
+          cell.lifetime--;
+        }
+
+        if (cell.lifetime <= 0) {
+          // Decay - keep heat but remove the slag/plasma
+          const heat = cell.heat;
+          this.gridManager.resetCell(x, y);
+          // Preserve the heat on the now-empty tile
+          grid[y][x].heat = heat;
+        }
+      }
+    }
   }
 
   /**
@@ -758,9 +814,9 @@ export class PhysicsEngine {
 
   /**
    * Run a complete physics tick
-   * Returns the money earned, meltdown status, and heat balance statistics
+   * Returns the money earned and heat balance statistics
    */
-  tick(): { moneyEarned: number; meltdown: boolean; heatBalance: TickHeatBalance } {
+  tick(): { moneyEarned: number; heatBalance: TickHeatBalance } {
     // Initialize per-cell performance tracking
     this.initCellPerformance();
 
@@ -788,11 +844,14 @@ export class PhysicsEngine {
     // Process power sale
     const { moneyEarned, powerSold } = this.processPowerSale();
 
-    // Capture heat after main physics (before meltdown can clear grid)
+    // Capture heat after main physics (before overheating changes)
     const heatAfterPhysics = this.getTotalGridHeat();
 
-    // Process overheating/meltdowns
-    const meltdown = this.processOverheating();
+    // Process overheating (structures melt to slag/plasma)
+    this.processOverheating();
+
+    // Process slag and plasma decay
+    this.processSlagPlasmaDecay();
 
     // Track high heat survival
     this.trackHighHeatSurvival();
@@ -835,6 +894,26 @@ export class PhysicsEngine {
       imbalance,
     };
 
-    return { moneyEarned, meltdown, heatBalance };
+    return { moneyEarned, heatBalance };
+  }
+
+  /**
+   * Get the minimum temperature across all tiles in the grid
+   * Used for checking "all tiles above X°C" conditions
+   */
+  getMinGridTemp(): number {
+    const grid = this.gridManager.getGridRef();
+    const gridSize = this.gridManager.getSize();
+    let minTemp = Infinity;
+
+    for (let y = 0; y < gridSize; y++) {
+      for (let x = 0; x < gridSize; x++) {
+        if (grid[y][x].heat < minTemp) {
+          minTemp = grid[y][x].heat;
+        }
+      }
+    }
+
+    return minTemp === Infinity ? 0 : minTemp;
   }
 }

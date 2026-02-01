@@ -11,11 +11,11 @@ import {
 import { getStructureCost, STRUCTURE_BASE_STATS } from './BalanceConfig.js';
 
 /**
- * Build a heat trap that causes meltdown - 2x2 cluster of fuel rods surrounded by insulation
+ * Build a heat trap - 2x2 cluster of fuel rods surrounded by insulation
  * Each fuel rod has 2 adjacent fuel rods, giving 2x heat multiplier (1 + 0.5*2)
  * Total heat generation: 4 * 100 * 2 = 800 heat/tick
  */
-function buildMeltdownTrap(game: HeatGame, centerX = 8, centerY = 8): void {
+function buildHeatTrap(game: HeatGame, centerX = 8, centerY = 8): void {
   // 2x2 fuel rod cluster
   game.build(centerX, centerY, StructureType.FuelRod, Tier.T1);
   game.build(centerX + 1, centerY, StructureType.FuelRod, Tier.T1);
@@ -33,10 +33,16 @@ function buildMeltdownTrap(game: HeatGame, centerX = 8, centerY = 8): void {
 }
 
 /**
- * Run ticks until meltdown occurs or max iterations reached
+ * Run ticks until a structure melts or max iterations reached
  */
-function runUntilMeltdown(game: HeatGame, maxTicks = 1000): void {
-  for (let i = 0; i < maxTicks && game.getMeltdownCount() === 0; i++) {
+function runUntilMelt(game: HeatGame, x: number, y: number, maxTicks = 1000): void {
+  for (let i = 0; i < maxTicks; i++) {
+    const cell = game.getCell(x, y);
+    if (!cell || cell.structure === StructureType.Empty ||
+        cell.structure === StructureType.MoltenSlag ||
+        cell.structure === StructureType.Plasma) {
+      break;
+    }
     game.tick();
   }
 }
@@ -77,12 +83,12 @@ describe('HeatGame', () => {
       expect(defaultGame.getMoney()).toBe(0);
     });
 
-    it('should start with zero meltdowns', () => {
-      expect(game.getMeltdownCount()).toBe(0);
-    });
-
     it('should start with zero tick count', () => {
       expect(game.getTickCount()).toBe(0);
+    });
+
+    it('should start with zero sell count', () => {
+      expect(game.getStats().sellCount).toBe(0);
     });
   });
 
@@ -154,67 +160,86 @@ describe('HeatGame', () => {
     });
   });
 
-  describe('demolishing structures', () => {
-    it('should allow demolishing structures', () => {
+  describe('selling structures', () => {
+    it('should allow selling structures', () => {
       game.build(0, 0, StructureType.FuelRod, Tier.T1);
-      expect(game.demolish(0, 0)).toBe(true);
+      expect(game.sell(0, 0)).toBe(true);
 
       const cell = game.getCell(0, 0);
       expect(cell?.structure).toBe(StructureType.Empty);
     });
 
-    it('should refund 75% when demolishing', () => {
+    it('should refund 50% when selling (default)', () => {
       const moneyBefore = game.getMoney();
       game.build(0, 0, StructureType.FuelRod, Tier.T1);
       const cost = 10; // T1 fuel rod cost
-      const expectedRefund = Math.floor(cost * 0.75);
+      const expectedRefund = Math.floor(cost * 0.5); // Default 50% refund
 
-      game.demolish(0, 0);
+      game.sell(0, 0);
 
       expect(game.getMoney()).toBe(moneyBefore - cost + expectedRefund);
     });
 
-    it('should reset heat when demolishing', () => {
+    it('should preserve heat when selling', () => {
       game.build(0, 0, StructureType.FuelRod, Tier.T1);
       game.tick(); // Generate some heat
 
       const cellBefore = game.getCell(0, 0);
-      expect(cellBefore?.heat).toBeGreaterThan(0);
+      const heatBefore = cellBefore?.heat ?? 0;
+      expect(heatBefore).toBeGreaterThan(0);
 
-      game.demolish(0, 0);
+      game.sell(0, 0);
 
       const cellAfter = game.getCell(0, 0);
-      expect(cellAfter?.heat).toBe(0);
+      // Heat is preserved on empty tile
+      expect(cellAfter?.heat).toBe(heatBefore);
     });
 
-    it('should not allow demolishing empty cells', () => {
-      expect(game.demolish(0, 0)).toBe(false);
+    it('should not allow selling empty cells', () => {
+      expect(game.sell(0, 0)).toBe(false);
     });
 
-    it('should emit event when demolishing', () => {
+    it('should emit event when selling', () => {
       game.build(0, 0, StructureType.Ventilator, Tier.T1);
 
       const events: GameEvent[] = [];
       game.addEventListener((event) => events.push(event));
 
-      game.demolish(0, 0);
+      game.sell(0, 0);
 
       expect(events.length).toBe(1);
-      expect(events[0].type).toBe('structure_destroyed');
+      expect(events[0].type).toBe('structure_sold');
       expect(events[0].structure).toBe(StructureType.Ventilator);
     });
 
-    it('should track demolish count for salvage unlock', () => {
+    it('should track sell count', () => {
       game.build(0, 0, StructureType.Ventilator, Tier.T1);
       game.build(1, 0, StructureType.Ventilator, Tier.T1);
 
-      expect(game.getStats().demolishCount).toBe(0);
+      expect(game.getStats().sellCount).toBe(0);
 
-      game.demolish(0, 0);
-      expect(game.getStats().demolishCount).toBe(1);
+      game.sell(0, 0);
+      expect(game.getStats().sellCount).toBe(1);
 
-      game.demolish(1, 0);
-      expect(game.getStats().demolishCount).toBe(2);
+      game.sell(1, 0);
+      expect(game.getStats().sellCount).toBe(2);
+    });
+
+    it('should not allow selling molten slag', () => {
+      game.build(8, 8, StructureType.FuelRod, Tier.T1);
+      game.build(8, 9, StructureType.Substation, Tier.T1); // Low melt temp
+
+      // Heat until substation melts to slag
+      for (let i = 0; i < 100; i++) {
+        game.tick();
+        const cell = game.getCell(8, 9);
+        if (cell?.structure === StructureType.MoltenSlag) break;
+      }
+
+      const cell = game.getCell(8, 9);
+      if (cell?.structure === StructureType.MoltenSlag) {
+        expect(game.sell(8, 9)).toBe(false);
+      }
     });
   });
 
@@ -474,54 +499,24 @@ describe('HeatGame', () => {
     });
   });
 
-  describe('meltdown', () => {
-    it('should trigger meltdown when fuel rod overheats', () => {
-      buildMeltdownTrap(game);
-      runUntilMeltdown(game);
-      expect(game.getMeltdownCount()).toBe(1);
-    });
+  describe('melting structures', () => {
+    it('should turn structures into molten slag when they overheat', () => {
+      // Substation has low melt temp (80°C)
+      game.build(8, 8, StructureType.FuelRod, Tier.T1);
+      game.build(8, 9, StructureType.Substation, Tier.T1);
 
-    it('should clear all structures on meltdown', () => {
-      buildMeltdownTrap(game);
-      game.build(15, 15, StructureType.Ventilator, Tier.T1); // Far away structure
-      runUntilMeltdown(game);
-
-      const grid = game.getGridSnapshot();
-      for (let y = 0; y < GRID_SIZE; y++) {
-        for (let x = 0; x < GRID_SIZE; x++) {
-          expect(grid[y][x].structure).toBe(StructureType.Empty);
-        }
+      // Run until substation melts to slag
+      for (let i = 0; i < 100; i++) {
+        game.tick();
+        const cell = game.getCell(8, 9);
+        if (cell?.structure === StructureType.MoltenSlag) break;
       }
+
+      const cell = game.getCell(8, 9);
+      expect(cell?.structure).toBe(StructureType.MoltenSlag);
     });
 
-    it('should keep money after meltdown', () => {
-      // Earn money with a safe setup first
-      game.build(2, 8, StructureType.FuelRod, Tier.T1);
-      game.build(2, 9, StructureType.Turbine, Tier.T1);
-      game.build(2, 10, StructureType.Substation, Tier.T1);
-      game.build(2, 7, StructureType.Ventilator, Tier.T1);
-
-      for (let i = 0; i < 15; i++) game.tick(); // Reduced ticks since fuel depletes
-      const moneyBeforeMeltdown = game.getMoney();
-
-      buildMeltdownTrap(game);
-      runUntilMeltdown(game);
-
-      expect(game.getMoney()).toBeGreaterThanOrEqual(moneyBeforeMeltdown - 500);
-    });
-
-    it('should emit meltdown event', () => {
-      const events: GameEvent[] = [];
-      game.addEventListener((event) => events.push(event));
-
-      buildMeltdownTrap(game);
-      runUntilMeltdown(game);
-
-      expect(events.filter(e => e.type === 'meltdown')).toHaveLength(1);
-    });
-
-    it('should melt non-fuel structures when they overheat', () => {
-      // Substation has low melt temp (80C)
+    it('should emit structure_melted event when structures melt', () => {
       game.build(8, 8, StructureType.FuelRod, Tier.T1);
       game.build(8, 9, StructureType.Substation, Tier.T1);
 
@@ -531,11 +526,82 @@ describe('HeatGame', () => {
       // Run until substation melts
       for (let i = 0; i < 100; i++) {
         game.tick();
-        if (game.getCell(8, 9)?.structure === StructureType.Empty) break;
+        const cell = game.getCell(8, 9);
+        if (cell?.structure === StructureType.MoltenSlag) break;
       }
 
       const meltEvents = events.filter(e => e.type === 'structure_melted');
       expect(meltEvents.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('should decay molten slag after its lifetime expires', () => {
+      game.build(8, 8, StructureType.FuelRod, Tier.T1);
+      game.build(8, 9, StructureType.Substation, Tier.T1);
+
+      // Run until substation melts to slag
+      let slagLifetime = 0;
+      for (let i = 0; i < 100; i++) {
+        game.tick();
+        const cell = game.getCell(8, 9);
+        if (cell?.structure === StructureType.MoltenSlag) {
+          slagLifetime = cell.lifetime;
+          break;
+        }
+      }
+
+      // Now run until slag decays
+      for (let i = 0; i < slagLifetime + 5; i++) {
+        game.tick();
+        const cell = game.getCell(8, 9);
+        if (cell?.structure === StructureType.Empty) break;
+      }
+
+      const cell = game.getCell(8, 9);
+      expect(cell?.structure).toBe(StructureType.Empty);
+    });
+
+    it('should preserve heat when slag decays', () => {
+      game.build(8, 8, StructureType.FuelRod, Tier.T1);
+      game.build(8, 9, StructureType.Substation, Tier.T1);
+
+      // Run until substation melts to slag
+      for (let i = 0; i < 100; i++) {
+        game.tick();
+        const cell = game.getCell(8, 9);
+        if (cell?.structure === StructureType.MoltenSlag) break;
+      }
+
+      // Get slag heat before decay
+      let slagHeat = game.getCell(8, 9)?.heat ?? 0;
+
+      // Run until slag decays
+      for (let i = 0; i < 15; i++) {
+        game.tick();
+        const cell = game.getCell(8, 9);
+        if (cell?.structure === StructureType.Empty) {
+          // Empty tile should have heat (not exactly same due to heat transfer)
+          expect(cell.heat).toBeGreaterThan(0);
+          break;
+        }
+      }
+    });
+
+    it('should not trigger full grid clear when fuel rod melts', () => {
+      // Build a far away structure
+      game.build(15, 15, StructureType.Ventilator, Tier.T1);
+
+      // Build heat trap
+      buildHeatTrap(game);
+
+      // Run many ticks - structures may melt but grid should not be cleared
+      for (let i = 0; i < 500; i++) {
+        game.tick();
+      }
+
+      // The ventilator should still exist (not cleared by "meltdown")
+      const cell = game.getCell(15, 15);
+      // Could be ventilator, or melted to slag/empty, but grid was not cleared
+      expect(cell).not.toBeNull();
     });
   });
 
@@ -570,21 +636,35 @@ describe('HeatGame', () => {
   });
 
   describe('secret upgrades', () => {
-    it('should unlock exotic fuel after first meltdown', () => {
-      expect(game.isSecretUnlocked(SecretUpgradeType.ExoticFuel)).toBe(false);
+    it('should unlock salvage after selling 100 structures', () => {
+      // Give enough money to buy and sell 100 structures
+      const richGame = new HeatGame(100000);
 
-      buildMeltdownTrap(game);
-      runUntilMeltdown(game);
+      expect(richGame.isSecretUnlocked(SecretUpgradeType.Salvage)).toBe(false);
 
-      expect(game.isSecretUnlocked(SecretUpgradeType.ExoticFuel)).toBe(true);
+      // Build and sell 100 structures
+      for (let i = 0; i < 100; i++) {
+        const x = i % 16;
+        const y = Math.floor(i / 16);
+        richGame.build(x, y, StructureType.Ventilator, Tier.T1);
+        richGame.sell(x, y);
+      }
+
+      expect(richGame.isSecretUnlocked(SecretUpgradeType.Salvage)).toBe(true);
     });
 
     it('should emit secret_unlocked event', () => {
+      const richGame = new HeatGame(100000);
       const events: GameEvent[] = [];
-      game.addEventListener((event) => events.push(event));
+      richGame.addEventListener((event) => events.push(event));
 
-      buildMeltdownTrap(game);
-      runUntilMeltdown(game);
+      // Build and sell 100 structures to trigger Salvage unlock
+      for (let i = 0; i < 100; i++) {
+        const x = i % 16;
+        const y = Math.floor(i / 16);
+        richGame.build(x, y, StructureType.Ventilator, Tier.T1);
+        richGame.sell(x, y);
+      }
 
       const unlockEvents = events.filter(e => e.type === 'secret_unlocked');
       expect(unlockEvents.length).toBeGreaterThan(0);

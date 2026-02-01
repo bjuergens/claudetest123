@@ -36,10 +36,12 @@ export interface UnlockStats {
   meltdownCount: number;
   filledCells: number;
   totalMoneyEarned: number;
-  demolishCount: number;
+  sellCount: number;
   ticksAtHighHeat: number;
   fuelRodsDepletedCool: number;
   fuelRodsDepletedIce: number;
+  allTilesAboveTemp?: number;
+  sellAllFullGrid?: boolean;
 }
 
 /**
