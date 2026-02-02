@@ -10,12 +10,13 @@ A nuclear reactor management incremental/idle game where players build and manag
 
 1. [Core Concept](#1-core-concept)
 2. [Grid System](#2-grid-system)
-3. [Structures](#3-structures)
-4. [Heat Physics](#4-heat-physics)
-5. [Power Generation & Economy](#5-power-generation--economy)
-6. [Upgrades](#6-upgrades)
-7. [Secrets & Achievements](#7-secrets--achievements)
-8. [Progression](#8-progression)
+3. [Cell Visuals](#3-cell-visuals)
+4. [Structures](#4-structures)
+5. [Heat Physics](#5-heat-physics)
+6. [Power Generation & Economy](#6-power-generation--economy)
+7. [Upgrades](#7-upgrades)
+8. [Secrets & Achievements](#8-secrets--achievements)
+9. [Progression](#9-progression)
 
 ---
 
@@ -63,7 +64,96 @@ The reactor is a closed system - there is no environmental heat loss at edges. H
 
 ---
 
-## 3. Structures
+## 3. Cell Visuals
+
+All cells are exactly square and the same size.
+
+### Cell Layout
+
+Each cell displays information through edge bars and background color:
+
+```
+        ┌─────────────────────┐
+        │   [TOP BAR]         │
+        │   Efficiency/Status │
+┌───┐   ├─────────────────────┤   ┌───┐
+│   │   │                     │   │   │
+│ L │   │                     │   │ R │
+│ E │   │      CELL           │   │ I │
+│ F │   │      CONTENT        │   │ G │
+│ T │   │                     │   │ H │
+│   │   │                     │   │ T │
+└───┘   ├─────────────────────┤   └───┘
+        │   [BOTTOM BAR]      │
+        │   Temperature Delta │
+        └─────────────────────┘
+```
+
+### Edge Bars
+
+| Position | Shows | Description |
+|----------|-------|-------------|
+| **Right** | Temperature | Bar from 0°C to structure's melt temperature. Only shown for non-empty cells. |
+| **Top** | Efficiency/Capacity | Structure-specific status indicator (see below) |
+| **Bottom** | Temperature Delta | Heat change from last tick. Center = no change, left = cooling, right = heating |
+| **Left** | (Reserved) | Currently unused. May be used for future features. |
+
+### Top Bar (Efficiency/Capacity) by Structure
+
+| Structure | Top Bar Shows |
+|-----------|---------------|
+| Fuel Rod | Lifetime remaining (100% = fresh, 0% = depleted) |
+| Turbine | Conversion efficiency (0% = idle/too cold, 100% = full capacity) |
+| Ventilator | Cooling efficiency (% of max heat dissipation being used) |
+| Substation | Power throughput (% of sale capacity being used) |
+| Heat Exchanger | Heat flow rate (% of max transfer occurring) |
+| Insulator | Heat blocked (% of potential transfer being blocked) |
+| Void Cell | Heat absorption (% of capacity being used) |
+| Ice Cube | Integrity (100% = solid, decreases as it heats toward melt) |
+
+### Background Color
+
+Cell background uses HSL color model to convey multiple data points simultaneously:
+
+| Component | Maps To | Details |
+|-----------|---------|---------|
+| **Hue** | Structure type | Each structure type has a distinct hue |
+| **Lightness** | Temperature | Logarithmic scale: darker = colder, lighter = hotter |
+| **Saturation** | Tier level | Higher tier = more saturated color |
+
+**Temperature to Lightness mapping** (logarithmic):
+- 0°C → 0.2 (dark)
+- 100°C → 0.4
+- 1000°C → 0.6 (bright)
+- Higher temperatures continue the logarithmic progression
+
+**Empty cells**: Display temperature as grayscale only (no hue or saturation).
+
+### Hover Details
+
+When hovering over a cell, display detailed information:
+
+**All cells show:**
+- Exact current temperature
+- Structure type and tier
+
+**Structure-specific details:**
+
+| Structure | Additional Hover Info |
+|-----------|----------------------|
+| Fuel Rod | Lifetime heat generated, ticks remaining |
+| Turbine | Lifetime power generated |
+| Substation | Lifetime power sold, lifetime €€ earned |
+| Ventilator | Lifetime heat dissipated |
+| Heat Exchanger | Lifetime heat transferred |
+| Insulator | Lifetime heat blocked |
+| Void Cell | Lifetime heat absorbed |
+| Ice Cube | Current integrity % |
+| Residues (Slag/Plasma/Water) | Ticks until decay |
+
+---
+
+## 4. Structures
 
 ### Structure Overview
 
@@ -148,7 +238,7 @@ Residues cannot be removed by the player and must decay naturally.
 
 ---
 
-## 4. Heat Physics
+## 5. Heat Physics
 
 ### Core Principle
 
@@ -180,7 +270,7 @@ Structures melt individually - there is no grid-clearing meltdown event.
 
 ---
 
-## 5. Power Generation & Economy
+## 6. Power Generation & Economy
 
 ### Power Flow
 
@@ -215,7 +305,7 @@ Suggested progression:
 
 ---
 
-## 6. Upgrades
+## 7. Upgrades
 
 ### Upgrade Philosophy
 
@@ -241,7 +331,7 @@ Exact names, costs, and values are left to the development team.
 
 ---
 
-## 7. Secrets & Achievements
+## 8. Secrets & Achievements
 
 Secrets are hidden features unlocked by meeting certain conditions. Once unlocked, they typically require a purchase to activate.
 
@@ -267,7 +357,7 @@ The development team is encouraged to add new secrets if they have good ideas th
 
 ---
 
-## 8. Progression
+## 9. Progression
 
 *All progression suggestions are guidelines. Players should be encouraged to find alternative paths, but should always be able to guess where a possible next step could be.*
 
