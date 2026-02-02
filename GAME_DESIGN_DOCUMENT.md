@@ -87,24 +87,11 @@ All cells are exactly square and the same size.
 
 ### Cell Layout
 
-Each cell displays information through edge bars and background color:
-
-```
-        ┌─────────────────────┐
-        │   [TOP BAR]         │
-        │   Efficiency/Status │
-┌───┐   ├─────────────────────┤   ┌───┐
-│   │   │                     │   │   │
-│ L │   │                     │   │ R │
-│ E │   │      CELL           │   │ I │
-│ F │   │      CONTENT        │   │ G │
-│ T │   │                     │   │ H │
-│   │   │                     │   │ T │
-└───┘   ├─────────────────────┤   └───┘
-        │   [BOTTOM BAR]      │
-        │   Temperature Delta │
-        └─────────────────────┘
-```
+Each cell displays information through four edge bars and a background color:
+- **Top bar** - Efficiency/Status
+- **Right bar** - Temperature
+- **Bottom bar** - Temperature Delta
+- **Left bar** - (Reserved for future use)
 
 ### Edge Bars
 
@@ -112,7 +99,7 @@ Each cell displays information through edge bars and background color:
 |----------|-------|-------------|
 | **Right** | Temperature | Bar from 0°C to structure's melt temperature. Only shown for non-empty cells. |
 | **Top** | Efficiency/Capacity | Structure-specific status indicator (see below) |
-| **Bottom** | Temperature Delta | Heat change from last tick. Center = no change, left = cooling, right = heating |
+| **Bottom** | Temperature Delta | Heat change from last tick. Center = no change, left = cooling, right = heating. Bar length uses logarithmic scale (similar to background color). |
 | **Left** | (Reserved) | Currently unused. May be used for future features. |
 
 ### Top Bar (Efficiency/Capacity) by Structure
@@ -184,8 +171,8 @@ When hovering over a cell, display concise information **inside the cell**:
 | Insulator | Blocks heat transfer | T1-T4 | No |
 | Turbine | Converts heat to power | T1-T4 | No |
 | Substation | Sells power for €€ | T1-T4 | No |
-| Void Cell | Extreme heat sink | T1 only | Yes |
-| Ice Cube | Emergency cooling (leaves water when melted) | T1 only | Yes |
+| Void Cell | Extreme heat sink | S tier | Yes |
+| Ice Cube | Emergency cooling (leaves water when melted) | S tier | Yes |
 
 ### Tier Scaling
 
@@ -225,23 +212,26 @@ Special cases:
 - Generates heat each tick based on tier
 - Has finite lifetime before depletion
 - **Adjacency bonus**: Fuel rods next to other fuel rods generate more heat (suggested: +100% per adjacent fuel rod)
-- **Exotic Variant** (secret): Heat generation scales with current temperature
+- **Exotic Variant** (secret): Heat generation scales with current temperature. When melting, releases large energy burst and leaves **Molten Nuclear Slag** at ~3000°C for ~100 ticks. Slag cannot be removed manually.
 
 #### Ventilator
 - Removes heat from its cell each tick
 - Reduces temperature toward 20°C (ambient)
 
 #### Heat Exchanger
-- High conductivity - spreads heat quickly between neighboring cells
-- No special effect beyond fast heat transfer
+- All cells have passive heat transfer from physics
+- Heat exchangers have an **additional active exchange**: when heat difference between neighbors is high enough, takes X heat from the hottest neighbor and moves it to the coldest neighbor (after physics heat delta)
+- Some visual flickering from this mechanic is acceptable
 
 #### Insulator
-- Very low conductivity - blocks most heat transfer
+- Most structures have equal heat transfer rate
+- Insulators have **lower conductivity** - blocks most heat transfer
 - Creates thermal isolation barriers
 
 #### Turbine
 - Converts heat above a threshold (suggested: 100°C) into power
 - Transfers power to adjacent substations
+- **Does not store power** - unused power is lost
 
 #### Substation
 - Sells stored power for €€
@@ -261,7 +251,7 @@ Special cases:
 
 When structures melt, they may leave temporary residue:
 - **Molten Slag** - Left by most melted structures, decays over time
-- **Plasma** - Left by exotic fuel at extreme temperatures, longer decay
+- **Molten Nuclear Slag** - Left by exotic fuel rods, very hot (~3000°C), long decay (~100 ticks)
 - **Water** - Left by melted ice cubes
 
 Residues cannot be removed by the player and must decay naturally.
@@ -278,13 +268,10 @@ Heat transfer should be **simple enough for players to understand and plan aroun
 
 Heat transfers between adjacent cells based on their conductivity values. Higher conductivity = faster heat transfer.
 
-Suggested conductivity ordering (highest to lowest):
-1. Void Cell, Plasma (maximum)
-2. Heat Exchanger (very high)
-3. Molten Slag (moderate)
-4. Fuel Rod, Turbine, Ventilator, Substation (normal)
-5. Empty cell (low)
-6. Insulator (very low)
+Most structures have **equal conductivity**. Exceptions:
+- **Void Cell** - Very high (pulls heat aggressively)
+- **Molten Nuclear Slag** - High (spreads heat)
+- **Insulator** - Very low (blocks heat)
 
 The exact formula is left to the development team. Consider offering different heat exchange algorithms in options to experiment with what feels most fun.
 
@@ -313,6 +300,8 @@ Fuel Rod (heat) → Turbine (power) → Substation (€€)
 - Only activates when cell temperature exceeds a threshold
 - Consumes heat and converts it to power
 - Transfers power to adjacent substations
+
+**Note:** Turbine operating temperature is higher than substation melt temperature (at default levels). Heat transfers passively from turbine to adjacent substation, putting substations in danger. This creates an interesting placement challenge.
 
 ### Substation Behavior
 
@@ -472,21 +461,7 @@ Touch equivalents left to development team.
 
 ### Icons & Symbols
 
-Use suitable icons for structures and UI elements. Prefer **Unicode symbols** where appropriate:
-
-| Element | Suggested Icons |
-|---------|-----------------|
-| Fuel Rod | ☢ ⚛ |
-| Ventilator | ❄ 🌀 |
-| Heat Exchanger | ⇄ ↔ |
-| Insulator | ▣ ◼ |
-| Turbine | ⚡ ⟳ |
-| Substation | € 💰 |
-| Temperature | 🌡 ° |
-| Power | ⚡ |
-| Heat/Fire | 🔥 |
-
-Development team may choose different icons that fit the visual style.
+Use suitable icons for structures and UI elements. Prefer **Unicode symbols** where appropriate. Exact icons left to development team.
 
 ### Options Menu
 
@@ -495,6 +470,7 @@ The options menu should include at minimum:
 - Save / Load
 - Autosave toggle
 - Reset game
+- Show timestamp of current version
 
 Exact items and presentation left to development team.
 
