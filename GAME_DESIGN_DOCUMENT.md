@@ -1,491 +1,333 @@
-# Heat Game - Game Design Document
+# Nucular Increment - Game Design Document
 
 A nuclear reactor management incremental/idle game where players build and manage heat generation, transfer, and power production systems.
+
+*This document provides rough suggestions for building "Nucular Increment". Implementation details, exact values, and wording are left to the development team.*
 
 ---
 
 ## Table of Contents
 
 1. [Core Concept](#1-core-concept)
-2. [Game Loop](#2-game-loop)
-3. [Grid System](#3-grid-system)
-4. [Structures](#4-structures)
-5. [Heat Physics](#5-heat-physics)
-6. [Power Generation & Economy](#6-power-generation--economy)
-7. [Upgrades](#7-upgrades)
-8. [Secrets & Achievements](#8-secrets--achievements)
-9. [Progression](#9-progression)
-10. [Constants Reference](#10-constants-reference)
+2. [Grid System](#2-grid-system)
+3. [Structures](#3-structures)
+4. [Heat Physics](#4-heat-physics)
+5. [Power Generation & Economy](#5-power-generation--economy)
+6. [Upgrades](#6-upgrades)
+7. [Secrets & Achievements](#7-secrets--achievements)
+8. [Progression](#8-progression)
 
 ---
 
 ## 1. Core Concept
 
-**Heat Game** is an incremental reactor management game. Players place structures on a grid to:
+**Nucular Increment** is an incremental reactor management game. Players place structures on a grid to:
 - Generate heat (fuel rods)
 - Transfer heat (heat exchangers)
 - Dissipate heat (ventilators)
 - Convert heat to power (turbines)
-- Sell power for money (substations)
+- Sell power for €€ (substations)
 
 The core tension: **more heat = more power = more risk of meltdown**.
 
 ### Design Pillars
 
-1. **Heat as Core Resource** - Heat flows through the grid following physics rules
+1. **Heat as Core Resource** - Heat flows through the grid following simplified physics rules
 2. **Risk vs Reward** - Higher temperatures yield more power but risk structure meltdowns
-3. **Exponential Progression** - Each tier is 10x cost, ~10x efficiency
-4. **No Punishing Failure** - Meltdowns are learning opportunities, not game-overs
+3. **Accessible Progression** - Tiers cost 10× more but are only ~5× stronger, keeping earlier tiers relevant
+4. **Never Stuck** - Players should always be able to rebuild and recover; meltdowns are learning opportunities
 
 ---
 
-## 2. Game Loop
-
-### Tick System
-
-- **Default tick rate**: 1 tick per second (1000ms)
-- **Upgradeable**: Overclock reduces tick interval (min ~328ms at max level)
-
-### Per-Tick Processing Order
-
-```
-1. Heat Generation      → Fuel rods produce heat
-2. Fuel Depletion       → Fuel rod lifetime decreases
-3. Heat Transfer        → Heat spreads between adjacent cells
-4. Heat Dissipation     → Ventilators/Void Cells remove heat
-5. Power Generation     → Turbines convert heat (>100°C) to power
-6. Power Sale           → Substations sell power for money
-7. Overheating Check    → Structures exceeding melt temp become slag/plasma
-8. Residue Decay        → Slag/plasma lifetime decreases
-```
-
-### Player Actions
-
-| Action | Effect |
-|--------|--------|
-| Place Structure | Spend money, add structure to grid |
-| Demolish Structure | Remove structure, get partial refund |
-| Purchase Upgrade | Spend money, permanent improvement |
-| Manual Click | Instant money generation |
-| Toggle Exotic Mode | Switch between normal/exotic fuel placement |
-
----
-
-## 3. Grid System
+## 2. Grid System
 
 ### Grid Properties
 
-| Property | Value |
-|----------|-------|
-| Starting Size | 16×16 (256 cells) |
-| Maximum Size | 20×20 (400 cells) |
-| Coordinate System | (x, y) with (0,0) at top-left |
+| Property | Suggestion |
+|----------|------------|
+| Starting Size | 8×8 |
+| Maximum Size | 16×16 (after all expansions) |
 | Neighbor System | 4-directional (no diagonals) |
-| Ambient Temperature | 20°C |
+| Initial Temperature | 20°C |
+| Minimum Temperature | 0°C |
 
 ### Grid Expansion
 
-Grid expands by purchasing Reactor Expansion secrets:
+Grid can be expanded through upgrades or secrets. Suggested progression from 8×8 up to 16×16 in increments (e.g., 8→10→12→14→16, or similar).
 
-| Expansion | Size | Cost |
-|-----------|------|------|
-| Initial | 16×16 | - |
-| Expansion I | 17×17 | 10,000 |
-| Expansion II | 18×18 | 100,000 |
-| Expansion III | 19×19 | 1,000,000 |
-| Expansion IV | 20×20 | 10,000,000 |
+**Suggested unlock**: Fill the current grid with structures to unlock the next expansion.
 
-**Unlock condition**: Fill the current grid completely with structures.
+### Closed System
 
-### Cell Data
-
-Each cell stores:
-- Position (x, y)
-- Structure type and tier
-- Current temperature (°C)
-- Stored power
-- Remaining lifetime (fuel rods)
-- Exotic flag (fuel rods)
-- Maximum temperature reached (for secrets)
+The reactor is a closed system - there is no environmental heat loss at edges. Heat only leaves through ventilators, turbines, or other player-placed structures.
 
 ---
 
-## 4. Structures
+## 3. Structures
 
 ### Structure Overview
 
 | Structure | Purpose | Tiers | Secret |
 |-----------|---------|-------|--------|
 | Fuel Rod | Generates heat | T1-T4 | No |
-| Ventilator | Dissipates heat | T1-T4 | No |
-| Heat Exchanger | Transfers heat faster | T1-T4 | No |
+| Ventilator | Dissipates heat (down to 20°C) | T1-T4 | No |
+| Heat Exchanger | Transfers heat faster between cells | T1-T4 | No |
 | Insulator | Blocks heat transfer | T1-T4 | No |
 | Turbine | Converts heat to power | T1-T4 | No |
-| Substation | Sells power for money | T1-T4 | No |
+| Substation | Sells power for €€ | T1-T4 | No |
 | Void Cell | Extreme heat sink | T1 only | Yes |
-| Ice Cube | Emergency cooling | T1 only | Yes |
+| Ice Cube | Emergency cooling (leaves water when melted) | T1 only | Yes |
 
-### Structure Costs
+### Tier Scaling
 
-| Structure | T1 | T2 | T3 | T4 |
-|-----------|-----|------|--------|----------|
-| Fuel Rod | 10 | 100 | 1,000 | 10,000 |
-| Ventilator | 10 | 100 | 1,000 | 10,000 |
-| Heat Exchanger | 15 | 150 | 1,500 | 15,000 |
-| Insulator | 8 | 80 | 800 | 8,000 |
-| Turbine | 25 | 250 | 2,500 | 25,000 |
-| Substation | 50 | 500 | 5,000 | 50,000 |
-| Void Cell | 100 | - | - | - |
-| Ice Cube | 5 | - | - | - |
+- Each tier costs approximately **10× more** than the previous
+- Each tier is approximately **5× stronger** than the previous
+- This keeps lower tiers somewhat relevant and creates interesting cost/benefit decisions
 
-### Melt Temperatures (Base)
+### Melt Temperature Guidelines
 
-| Structure | Melt Temp | Notes |
-|-----------|-----------|-------|
-| Fuel Rod | 2,000°C | Most durable |
-| Heat Exchanger | 400°C | Medium durability |
-| Insulator | 1,000°C | Heat-resistant |
-| Ventilator | 200°C | Fragile |
-| Turbine | 150°C | Fragile |
-| Substation | 80°C | Very fragile |
-| Void Cell | ∞ | Cannot melt |
-| Ice Cube | 100°C | Intentionally melts |
+Structures should have different heat tolerances. Suggested ordering from most to least durable:
 
-### Detailed Structure Behaviors
+1. **Fuel Rod** - Most heat resistant (they generate the heat)
+2. **Insulator** - Designed to handle heat
+3. **Heat Exchanger** - Medium durability
+4. **Ventilator** - Somewhat fragile
+5. **Turbine** - Fragile (needs cooling)
+6. **Substation** - Very fragile (keep away from heat sources)
+
+Special cases:
+- **Void Cell** - Cannot melt
+- **Ice Cube** - Intentionally melts at low temperature
+
+### Structure Behaviors
 
 #### Fuel Rod
-- **Heat Generation per Tier**: T1=100, T2=1,000, T3=10,000, T4=100,000 heat/tick
-- **Lifetime per Tier**: T1=20, T2=200, T3=2,000, T4=20,000 ticks
-- **Adjacency Bonus**: +100% heat per adjacent fuel rod
-  - Example: 4 fuel rods in square = each generates 5× heat
-- **Exotic Variant**: Heat scales with temperature
-  - Formula: `multiplier = min(5.0, 1.0 + (temp / 1000) × 0.5)`
-  - At 2000°C: 2× heat, at 8000°C+: 5× heat (capped)
+- Generates heat each tick based on tier
+- Has finite lifetime before depletion
+- **Adjacency bonus**: Fuel rods next to other fuel rods generate more heat (suggested: +100% per adjacent fuel rod)
+- **Exotic Variant** (secret): Heat generation scales with current temperature
 
 #### Ventilator
-- **Heat Dissipation per Tier**: T1=5, T2=50, T3=500, T4=5,000 heat/tick
 - Removes heat from its cell each tick
+- Reduces temperature toward 20°C (ambient)
 
 #### Heat Exchanger
-- **Conductivity**: 0.4 (very high)
-- No special effect, just spreads heat quickly between neighbors
+- High conductivity - spreads heat quickly between neighboring cells
+- No special effect beyond fast heat transfer
 
 #### Insulator
-- **Conductivity**: 0.005 (extremely low)
+- Very low conductivity - blocks most heat transfer
 - Creates thermal isolation barriers
 
 #### Turbine
-- **Heat Consumption per Tier**: T1=10, T2=100, T3=1,000, T4=10,000 heat/tick
-- **Power Generation**: 0.1 power per heat consumed
-- **Requirement**: Only works when cell temperature > 100°C
+- Converts heat above a threshold (suggested: 100°C) into power
 - Transfers power to adjacent substations
 
 #### Substation
-- **Power Sale Rate per Tier**: T1=1, T2=10, T3=100, T4=1,000 power/tick
-- **Money Earned**: 1 money per power sold
-- Most fragile structure (80°C melt temp)
+- Sells stored power for €€
+- Should be the most fragile structure to create interesting placement challenges
 
 #### Void Cell (Secret)
-- **Heat Dissipation**: 50 heat/tick
-- **Conductivity**: 1.0 (maximum - pulls heat aggressively)
+- Extreme heat dissipation
+- Very high conductivity (pulls heat from neighbors aggressively)
 - Cannot melt - perfect for extreme heat zones
-- Only T1 available
 
 #### Ice Cube (Secret)
-- **Melt Behavior**: When it melts at 100°C, cools the tile to 0°C
-- Leaves molten slag after melting
-- Perfect for emergency cooling
-- Only T1 available
+- When it melts, cools the tile significantly (suggested: to 0°C)
+- Leaves water after melting (not slag)
+- Perfect for emergency cooling situations
 
-### Residues (Non-Placeable)
+### Residues
 
-| Residue | Source | Lifetime | Conductivity |
-|---------|--------|----------|--------------|
-| Molten Slag | Normal structure melt | 10 ticks | 0.5 |
-| Plasma | Exotic fuel at 100,000°C | 100 ticks | 1.0 |
+When structures melt, they may leave temporary residue:
+- **Molten Slag** - Left by most melted structures, decays over time
+- **Plasma** - Left by exotic fuel at extreme temperatures, longer decay
+- **Water** - Left by melted ice cubes
 
-- Cannot be removed by player
-- Heat remains when residue decays
-- Empty cell left behind
+Residues cannot be removed by the player and must decay naturally.
 
 ---
 
-## 5. Heat Physics
+## 4. Heat Physics
 
-### Heat Transfer Formula
+### Core Principle
 
-Heat transfers between adjacent cells based on conductivity:
+Heat transfer should be **simple enough for players to understand and plan around**. This is the core game mechanic - players need to intuitively grasp how heat will flow to make strategic decisions.
 
-```
-avgConductivity = (cell1.conductivity + cell2.conductivity) / 2
-transfer = temperatureDifference × avgConductivity / 2
-```
+### Heat Transfer
 
-Both cells update: warmer cell loses heat, cooler cell gains heat.
+Heat transfers between adjacent cells based on their conductivity values. Higher conductivity = faster heat transfer.
 
-### Conductivity Values
+Suggested conductivity ordering (highest to lowest):
+1. Void Cell, Plasma (maximum)
+2. Heat Exchanger (very high)
+3. Molten Slag (moderate)
+4. Fuel Rod, Turbine, Ventilator, Substation (normal)
+5. Empty cell (low)
+6. Insulator (very low)
 
-| Structure | Base Conductivity |
-|-----------|-------------------|
-| Void Cell | 1.0 |
-| Plasma | 1.0 |
-| Molten Slag | 0.5 |
-| Heat Exchanger | 0.4 |
-| Fuel Rod | 0.3 |
-| Ice Cube | 0.3 |
-| Turbine | 0.2 |
-| Ventilator | 0.2 |
-| Substation | 0.2 |
-| Empty | 0.06 |
-| Insulator | 0.005 |
-
-### Environment Heat Loss
-
-Edge cells lose heat to environment:
-
-```
-heatLost = (cellTemp - 20) × 0.05 × numEdges
-```
-
-- Corner cells: 2 edges (more heat loss)
-- Edge cells: 1 edge
-- Interior cells: 0 edges (no environmental loss)
+The exact formula is left to the development team. Consider offering different heat exchange algorithms in options to experiment with what feels most fun.
 
 ### Meltdown Mechanics
 
 When a structure's temperature exceeds its melt temperature:
-
 1. Structure is destroyed
-2. Residue is created:
-   - Normal structures → Molten Slag (10 tick lifetime)
-   - Exotic fuel at 100,000°C+ → Plasma (100 tick lifetime)
-   - Ice Cube → Slag, but temperature resets to 0°C
+2. Appropriate residue is created (slag, plasma, or water)
 3. Heat is preserved on the residue
-4. Power is lost
+4. Residue decays after some ticks, leaving an empty cell
 
-**Important**: There is no grid-clearing meltdown event. Structures melt individually.
+Structures melt individually - there is no grid-clearing meltdown event.
 
 ---
 
-## 6. Power Generation & Economy
+## 5. Power Generation & Economy
 
 ### Power Flow
 
 ```
-Fuel Rod (heat) → Turbine (power) → Substation (money)
+Fuel Rod (heat) → Turbine (power) → Substation (€€)
 ```
 
-### Turbine Power Generation
+### Turbine Behavior
 
-1. Only activates when cell temperature > 100°C
-2. Consumes heat above 100°C (up to tier maximum)
-3. Generates 0.1 power per heat consumed
-4. Transfers power to adjacent substation
+- Only activates when cell temperature exceeds a threshold
+- Consumes heat and converts it to power
+- Transfers power to adjacent substations
 
-### Substation Power Sale
+### Substation Behavior
 
-- Sells power up to tier rate each tick
-- Earns 1 money per power sold
+- Sells stored power for €€
+- Sale rate depends on tier
 
-### Manual Click Income
+### Manual Power Generation
 
-- **Base**: 1 money per click
-- **With upgrades**: 1 + (upgrade level × 1) per click
+Players can manually generate €€ through direct interaction (clicking, tapping, etc.). This provides early-game income before automation is established.
 
-### Demolish Refund
+The exact wording and presentation is left to the development team.
 
-| Condition | Refund Rate |
-|-----------|-------------|
-| Base | 50% |
-| + Salvage Operations | 75% |
-| + Salvage Master | 100% |
+### Recycle Mechanic
+
+Players can recycle (remove) placed structures to recover a portion of their cost.
+
+Suggested progression:
+- Base refund: ~50%
+- With upgrades/secrets: Up to 100%
 
 ---
 
-## 7. Upgrades
+## 6. Upgrades
 
-### Upgrade Cost Formula
+### Upgrade Philosophy
 
-```
-cost = baseCost × (costMultiplier ^ currentLevel)
-```
+Upgrades provide permanent improvements. Cost should scale exponentially while benefits scale linearly, creating meaningful progression decisions.
 
-### Regular Upgrades
+### Suggested Upgrade Categories
 
-| Upgrade | Base Cost | Multiplier | Max Level | Effect per Level |
-|---------|-----------|------------|-----------|------------------|
-| Fuel Longevity | 100 | 2.5× | ∞ | +10 ticks lifetime |
-| Enriched Fuel | 150 | 2.5× | ∞ | +5 heat/tick |
-| Turbine Efficiency | 200 | 2.0× | 10 | +0.03 conductivity |
-| Advanced Insulation | 150 | 2.0× | 10 | ×0.5 conductivity |
-| Improved Cooling | 100 | 2.0× | ∞ | +2 heat dissipation |
-| Power Grid Upgrade | 500 | 3.0× | ∞ | +1 power/tick sale |
-| Overclock* | 1,000 | 5.0× | 5 | ×0.8 tick interval |
-| Bigger Buttons | 50 | 2.0× | ∞ | +1 money/click |
+For each structure type, consider upgrades for:
+- **Efficiency** - Better at their main function
+- **Durability** - Higher melt temperature
+- **Special effects** - Unique bonuses
 
-*Overclock requires Temporal Acceleration secret
+### Global Upgrades (Suggestions)
 
-### Melt Temperature Upgrades
+- **Fuel Longevity** - Fuel rods last longer
+- **Improved Cooling** - Ventilators dissipate more heat
+- **Power Grid** - Substations sell power faster
+- **Tick Speed** - Game runs faster (requires secret unlock)
+- **Manual Generation** - Manual power generation gives more €€
+- **Better Recycling** - Higher refund when recycling structures
 
-| Upgrade | Base Cost | Multiplier | Max Level | Effect per Level |
-|---------|-----------|------------|-----------|------------------|
-| Reinforced Fuel Casing | 500 | 3.0× | 10 | +500°C |
-| Heat-Resistant Fans | 100 | 2.5× | 10 | +20°C (Ventilator) |
-| Hardened Exchangers | 150 | 2.5× | 10 | +40°C |
-| Advanced Ceramics | 120 | 2.5× | 10 | +30°C (Insulator) |
-| Reinforced Turbines | 200 | 2.5× | 10 | +15°C |
-| Industrial Substations | 300 | 3.0× | 10 | +10°C |
+Exact names, costs, and values are left to the development team.
 
 ---
 
-## 8. Secrets & Achievements
+## 7. Secrets & Achievements
 
-Secrets are hidden until unlock conditions are met, then must be purchased.
+Secrets are hidden features unlocked by meeting certain conditions. Once unlocked, they typically require a purchase to activate.
 
-### Secret Unlock Conditions
+### Suggested Secrets
 
-| Secret | Unlock Condition | Cost |
-|--------|------------------|------|
-| Exotic Fuel Synthesis | First structure melts | 1,000 |
-| Reactor Expansion I | Fill 16×16 grid | 10,000 |
-| Reactor Expansion II | Fill 17×17 grid | 100,000 |
-| Reactor Expansion III | Fill 18×18 grid | 1,000,000 |
-| Reactor Expansion IV | Fill 19×19 grid | 10,000,000 |
-| Void Technology | 100 ticks with fuel rod at 90% melt temp | 5,000 |
-| Temporal Acceleration | Earn 10,000 total money | 10,000 |
-| Salvage Operations | Sell 100 structures | 2,000 |
-| Salvage Master | Sell entire full grid at once | 10,000 |
-| Cryogenic Fuel Casing | Deplete 10 fuel rods that never exceeded 200°C | 3,000 |
-| Superconductor Technology | Deplete 10 fuel rods that never exceeded 100°C | 10,000 |
-| Cryogenic Technology | Heat all tiles to 100°C+ simultaneously | 1 |
-| Nach mir die Sintflut | Heat all tiles to 5,000°C+ simultaneously | 1,000 |
+| Secret | Unlock Condition (Suggestion) |
+|--------|------------------------------|
+| Exotic Fuel | First structure melts |
+| Grid Expansions | Fill current grid completely |
+| Void Technology | Survive with fuel rod at high heat for extended time |
+| Faster Ticks | Earn threshold amount of €€ |
+| Better Recycling | Recycle many structures |
+| Ice Technology | Heat entire grid to threshold temperature |
+| Cooling Mastery | Deplete fuel rods while keeping them cool |
 
-### Secret Effects
+### Toggleable Secrets
 
-| Secret | Toggleable | Effect |
-|--------|------------|--------|
-| Exotic Fuel Synthesis | Yes | Build fuel that scales heat with temperature |
-| Reactor Expansion I-IV | No | Expand grid size |
-| Void Technology | No | Unlock Void Cell structure |
-| Temporal Acceleration | No | Unlock Overclock upgrade |
-| Salvage Operations | No | 75% demolish refund |
-| Salvage Master | No | 100% demolish refund |
-| Cryogenic Fuel Casing | No | +500°C fuel melt temp |
-| Superconductor Technology | No | +1,000°C fuel melt temp |
-| Cryogenic Technology | No | Unlock Ice Cube structure |
-| Nach mir die Sintflut | No | Sell All cools tiles above 100°C to 100°C |
+Some secrets (like Exotic Fuel) should be toggleable - players can enable/disable the feature after purchase.
+
+### Open for Expansion
+
+The development team is encouraged to add new secrets if they have good ideas that fit the game's design pillars.
 
 ---
 
-## 9. Progression
+## 8. Progression
 
-### Early Game (~0-1 hour)
+*All progression suggestions are guidelines. Players should be encouraged to find alternative paths, but should always be able to guess where a possible next step could be.*
 
-1. **Manual clicking** to earn starting money
-2. **First fuel rod** - heat generation begins
-3. **First ventilator** - learn heat management
-4. **First turbine + substation** - passive income starts
-5. **First meltdown** - unlocks Exotic Fuel secret
-6. **Early upgrades**: Fuel Longevity, Bigger Buttons
+### Early Game
 
-### Mid Game (~1-10 hours)
+1. Manual power generation to earn starting €€
+2. First fuel rod - heat generation begins
+3. First ventilator - learn heat management
+4. First turbine + substation - passive income starts
+5. First meltdown - discover that recovery is possible
+6. Early upgrades to improve efficiency
 
-1. **Tier 2 structures** - 10× efficiency jump
-2. **Fill the grid** - unlock Reactor Expansion I
-3. **Grid expansions** - more space, more power
-4. **Key secrets**:
-   - Void Technology (survive high heat)
-   - Temporal Acceleration (earn 10k money)
-   - Salvage Operations (sell 100 structures)
-5. **Melt temperature upgrades** - higher heat tolerance
+### Mid Game
 
-### Late Game (10+ hours)
+1. Higher tier structures
+2. Fill the grid to unlock expansions
+3. Discover and unlock secrets
+4. Experiment with exotic fuel
+5. Optimize layouts for maximum power
 
-1. **Tier 3 and 4 structures** - massive scale
-2. **Exotic fuel mastery** - temperature-scaling heat
-3. **Void cell placement** - strategic heat sinks
-4. **Full expansion** to 20×20
-5. **Cooling secrets** - Cryogenic + Superconductor
-6. **Optimization challenges** - max power/tick
+### Late Game
+
+1. Highest tier structures
+2. Full grid expansion
+3. Secret structures (Void Cell, Ice Cube)
+4. Extreme temperature management
+5. Optimization challenges
 
 ### Endgame
 
-- No explicit win condition
-- Infinite progression
-- Optimization goals:
-  - Maximum power generation
-  - Largest stable temperature
-  - Fastest money accumulation
-  - Exotic fuel reactor designs
+*To be implemented in future updates.*
+
+Planned direction: New Game+ mechanics with bonuses, new structures, and new upgrades in subsequent runs. For initial release, leave the endgame open.
 
 ---
 
-## 10. Constants Reference
+## Appendix: Quick Reference
 
-### Core Constants
+### Structure Summary
 
-| Constant | Value |
-|----------|-------|
-| Starting Money | 0 |
-| Tick Interval | 1000ms |
-| Initial Grid Size | 16×16 |
-| Maximum Grid Size | 20×20 |
-| Ambient Temperature | 20°C |
-| Environment Heat Loss Rate | 0.05 per edge |
+| Structure | Purpose | Notes |
+|-----------|---------|-------|
+| Fuel Rod | Heat generation | Adjacency bonus, finite lifetime |
+| Ventilator | Heat removal | Cools toward 20°C |
+| Heat Exchanger | Fast heat transfer | Medium durability |
+| Insulator | Heat blocking | High durability |
+| Turbine | Heat → Power | Needs heat threshold |
+| Substation | Power → €€ | Very fragile |
+| Void Cell | Extreme cooling | Cannot melt (secret) |
+| Ice Cube | Emergency cooling | Leaves water (secret) |
 
-### Economy Constants
+### Key Design Points
 
-| Constant | Value |
-|----------|-------|
-| Money per Power | 1 |
-| Base Demolish Refund | 50% |
-| Base Money per Click | 1 |
-
-### Physics Constants
-
-| Constant | Value |
-|----------|-------|
-| Turbine Activation Temp | 100°C |
-| Power per Heat | 0.1 |
-| Heat per Adjacent Fuel Rod | +100% |
-| Exotic Max Multiplier | 5.0× |
-| Exotic Heat Scaling | +0.5× per 1000°C |
-
-### Structure Tier Scaling
-
-| Tier | Cost Multiplier | Stat Multiplier |
-|------|-----------------|-----------------|
-| T1 | 1× | 1× |
-| T2 | 10× | 10× |
-| T3 | 100× | 100× |
-| T4 | 1,000× | 1,000× |
+- Grid: 8×8 starting, expandable to 16×16
+- Closed system (no environmental heat loss)
+- Tiers: 10× cost, 5× power
+- Currency: €€ (double euro)
+- Recovery always possible (never stuck)
+- Heat physics should be intuitive and plannable
 
 ---
 
-## Appendix: Quick Reference Tables
-
-### All Structures at a Glance
-
-| Structure | T1 Cost | Heat Gen | Heat Dissip | Conductivity | Melt Temp |
-|-----------|---------|----------|-------------|--------------|-----------|
-| Fuel Rod | 10 | 100/tick | - | 0.3 | 2000°C |
-| Ventilator | 10 | - | 5/tick | 0.2 | 200°C |
-| Heat Exchanger | 15 | - | - | 0.4 | 400°C |
-| Insulator | 8 | - | - | 0.005 | 1000°C |
-| Turbine | 25 | - | - | 0.2 | 150°C |
-| Substation | 50 | - | - | 0.2 | 80°C |
-| Void Cell | 100 | - | 50/tick | 1.0 | ∞ |
-| Ice Cube | 5 | - | - | 0.3 | 100°C |
-
-### Turbine/Substation Power Chain
-
-| Tier | Turbine Heat Consumed | Power Generated | Substation Sale Rate |
-|------|----------------------|-----------------|---------------------|
-| T1 | 10/tick | 1/tick | 1/tick |
-| T2 | 100/tick | 10/tick | 10/tick |
-| T3 | 1,000/tick | 100/tick | 100/tick |
-| T4 | 10,000/tick | 1,000/tick | 1,000/tick |
-
----
-
-*This document provides complete specifications for rebuilding Heat Game from scratch.*
+*Development team: Feel free to adjust values, names, and mechanics as needed. This document describes the vision and feel of the game - the specifics are yours to refine.*
