@@ -80,3 +80,11 @@
 {"type":"screencast-frame","pageId":"page@f99701fee38fc1ddb9495287e17420ee","sha1":"page@f99701fee38fc1ddb9495287e17420ee-1769974637419.jpeg","width":1280,"height":720,"timestamp":139603.416,"frameSwapWallTime":1769974637416.025}
 {"type":"screencast-frame","pageId":"page@f99701fee38fc1ddb9495287e17420ee","sha1":"page@f99701fee38fc1ddb9495287e17420ee-1769974637637.jpeg","width":1280,"height":720,"timestamp":139820.829,"frameSwapWallTime":1769974637632.658}
 {"type":"screencast-frame","pageId":"page@f99701fee38fc1ddb9495287e17420ee","sha1":"page@f99701fee38fc1ddb9495287e17420ee-1769974637836.jpeg","width":1280,"height":720,"timestamp":140020.202,"frameSwapWallTime":1769974637832.4448}
+{"type":"screencast-frame","pageId":"page@09ece7d764d20344f6753ffff7653765","sha1":"page@09ece7d764d20344f6753ffff7653765-1770028993758.jpeg","width":1280,"height":720,"timestamp":138810.096,"frameSwapWallTime":1770028993755.1948}
+{"type":"screencast-frame","pageId":"page@09ece7d764d20344f6753ffff7653765","sha1":"page@09ece7d764d20344f6753ffff7653765-1770028993958.jpeg","width":1280,"height":720,"timestamp":139009.854,"frameSwapWallTime":1770028993954.9202}
+{"type":"log","callId":"call@15","time":139121.821,"message":"  locator resolved to 7 elements"}
+{"type":"log","callId":"call@15","time":139121.837,"message":"  unexpected value \"7\""}
+{"type":"screencast-frame","pageId":"page@09ece7d764d20344f6753ffff7653765","sha1":"page@09ece7d764d20344f6753ffff7653765-1770028994158.jpeg","width":1280,"height":720,"timestamp":139210.642,"frameSwapWallTime":1770028994155.108}
+{"type":"screencast-frame","pageId":"page@09ece7d764d20344f6753ffff7653765","sha1":"page@09ece7d764d20344f6753ffff7653765-1770028994357.jpeg","width":1280,"height":720,"timestamp":139408.797,"frameSwapWallTime":1770028994353.343}
+{"type":"screencast-frame","pageId":"page@09ece7d764d20344f6753ffff7653765","sha1":"page@09ece7d764d20344f6753ffff7653765-1770028994558.jpeg","width":1280,"height":720,"timestamp":139609.947,"frameSwapWallTime":1770028994555.0671}
+{"type":"screencast-frame","pageId":"page@09ece7d764d20344f6753ffff7653765","sha1":"page@09ece7d764d20344f6753ffff7653765-1770028994758.jpeg","width":1280,"height":720,"timestamp":139810.344,"frameSwapWallTime":1770028994755.375}
