@@ -251,7 +251,7 @@ Special cases:
 
 When structures melt, they may leave temporary residue:
 - **Molten Slag** - Left by most melted structures, decays over time
-- **Molten Nuclear Slag** - Left by exotic fuel rods, very hot (~3000°C), long decay (~100 ticks)
+- **Molten Nuclear Slag** - Left by all fuel rods, very hot (~3000°C), long decay (~100 ticks)
 - **Water** - Left by melted ice cubes
 
 Residues cannot be removed by the player and must decay naturally.
