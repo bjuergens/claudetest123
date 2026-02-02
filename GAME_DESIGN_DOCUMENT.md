@@ -441,6 +441,35 @@ The game is a **PWA (Progressive Web App)** built with HTML5. It should:
 - Let players discover mechanics through play
 - Show, don't tell
 
+### Visual Style
+
+**Dark background with colorful, high-energy highlights.**
+
+- Dark base theme (blacks, deep grays)
+- Vibrant, glowing colors for active elements
+- Visual language should scream "high energy"
+- Heat and power should feel alive and dangerous
+
+### Animations
+
+Add suitable animations throughout:
+- Heat flow visualization between cells
+- Pulsing/glowing for active structures
+- Meltdown effects (dramatic)
+- Power transfer visual feedback
+- Temperature changes (color transitions)
+- Structure placement/removal feedback
+
+### Controls
+
+| Action | Input |
+|--------|-------|
+| Place structure | Left-click on cell |
+| Recycle structure | Right-click on cell |
+| Hover details | Mouse over cell |
+
+Touch equivalents left to development team.
+
 ### Icons & Symbols
 
 Use suitable icons for structures and UI elements. Prefer **Unicode symbols** where appropriate:
@@ -461,15 +490,13 @@ Development team may choose different icons that fit the visual style.
 
 ### Options Menu
 
-The options menu should include:
+The options menu should include at minimum:
+- Update game (if new version available)
+- Save / Load
+- Autosave toggle
+- Reset game
 
-| Option | Description |
-|--------|-------------|
-| **Update** | Check for and apply game updates (if available) |
-| **Save** | Manual save to storage |
-| **Load** | Load saved game |
-| **Autosave** | Toggle automatic saving (on/off) |
-| **Reset** | Start fresh (with confirmation) |
+Exact items and presentation left to development team.
 
 ### Data Persistence
 
