@@ -62,6 +62,22 @@ Grid can be expanded through upgrades or secrets. Suggested progression from 8×
 
 The reactor is a closed system - there is no environmental heat loss at edges. Heat only leaves through ventilators, turbines, or other player-placed structures.
 
+### Starting Configuration
+
+The game begins with a pre-built starter setup and 0 €€:
+
+```
+        [INS]
+[INS]   [   ]   [TUR] → [SUB]
+        [INS]
+```
+
+- 3 Insulators surround an empty cell
+- 1 Turbine on the 4th side
+- 1 Substation behind the turbine
+
+The player must manually generate 10 €€ to place their first fuel rod in the empty cell. This teaches the core loop: fuel rod heats up → turbine converts heat → substation earns €€.
+
 ---
 
 ## 3. Cell Visuals
@@ -131,25 +147,27 @@ Cell background uses HSL color model to convey multiple data points simultaneous
 
 ### Hover Details
 
-When hovering over a cell, display detailed information:
+When hovering over a cell, display concise information **inside the cell**:
 
 **All cells show:**
-- Exact current temperature
-- Structure type and tier
+- Current temperature (in °C)
+- Temperature delta from last tick
+- Tier as Roman numeral (I, II, III, IV)
+- Lifetime production stat (structure-specific)
 
-**Structure-specific details:**
+**Lifetime production by structure:**
 
-| Structure | Additional Hover Info |
-|-----------|----------------------|
-| Fuel Rod | Lifetime heat generated, ticks remaining |
-| Turbine | Lifetime power generated |
-| Substation | Lifetime power sold, lifetime €€ earned |
-| Ventilator | Lifetime heat dissipated |
-| Heat Exchanger | Lifetime heat transferred |
-| Insulator | Lifetime heat blocked |
-| Void Cell | Lifetime heat absorbed |
-| Ice Cube | Current integrity % |
-| Residues (Slag/Plasma/Water) | Ticks until decay |
+| Structure | Lifetime Stat |
+|-----------|---------------|
+| Fuel Rod | Heat generated |
+| Turbine | Power generated |
+| Substation | €€ earned |
+| Ventilator | Heat dissipated |
+| Heat Exchanger | Heat transferred |
+| Insulator | Heat blocked |
+| Void Cell | Heat absorbed |
+| Ice Cube | (shows integrity %) |
+| Residues | Ticks until decay |
 
 ---
 
@@ -174,16 +192,27 @@ When hovering over a cell, display detailed information:
 - Each tier is approximately **5× stronger** than the previous
 - This keeps lower tiers somewhat relevant and creates interesting cost/benefit decisions
 
-### Melt Temperature Guidelines
+### Tier 1 Costs
 
-Structures should have different heat tolerances. Suggested ordering from most to least durable:
+| Structure | T1 Cost |
+|-----------|---------|
+| Fuel Rod | 10 €€ |
+| Insulator | 5 €€ |
+| Ventilator | 15 €€ |
+| Heat Exchanger | 15 €€ |
+| Turbine | 25 €€ |
+| Substation | 50 €€ |
 
-1. **Fuel Rod** - Most heat resistant (they generate the heat)
-2. **Insulator** - Designed to handle heat
-3. **Heat Exchanger** - Medium durability
-4. **Ventilator** - Somewhat fragile
-5. **Turbine** - Fragile (needs cooling)
-6. **Substation** - Very fragile (keep away from heat sources)
+### Tier 1 Melt Temperatures
+
+| Structure | T1 Melt Temp |
+|-----------|--------------|
+| Fuel Rod | 2000°C |
+| Insulator | 1500°C |
+| Heat Exchanger | 800°C |
+| Turbine | 300°C |
+| Ventilator | 100°C |
+| Substation | 80°C |
 
 Special cases:
 - **Void Cell** - Cannot melt
@@ -363,10 +392,10 @@ The development team is encouraged to add new secrets if they have good ideas th
 
 ### Early Game
 
-1. Manual power generation to earn starting €€
-2. First fuel rod - heat generation begins
-3. First ventilator - learn heat management
-4. First turbine + substation - passive income starts
+1. Start with pre-built setup (insulators + turbine + substation)
+2. Manual power generation to earn first 10 €€
+3. Place first fuel rod - heat generation begins, passive income starts
+4. Expand the starter setup with more structures
 5. First meltdown - discover that recovery is possible
 6. Early upgrades to improve efficiency
 
@@ -396,18 +425,18 @@ Planned direction: New Game+ mechanics with bonuses, new structures, and new upg
 
 ## Appendix: Quick Reference
 
-### Structure Summary
+### Structure Summary (Tier 1)
 
-| Structure | Purpose | Notes |
-|-----------|---------|-------|
-| Fuel Rod | Heat generation | Adjacency bonus, finite lifetime |
-| Ventilator | Heat removal | Cools toward 20°C |
-| Heat Exchanger | Fast heat transfer | Medium durability |
-| Insulator | Heat blocking | High durability |
-| Turbine | Heat → Power | Needs heat threshold |
-| Substation | Power → €€ | Very fragile |
-| Void Cell | Extreme cooling | Cannot melt (secret) |
-| Ice Cube | Emergency cooling | Leaves water (secret) |
+| Structure | T1 Cost | T1 Melt | Purpose |
+|-----------|---------|---------|---------|
+| Fuel Rod | 10 €€ | 2000°C | Heat generation |
+| Insulator | 5 €€ | 1500°C | Heat blocking |
+| Ventilator | 15 €€ | 100°C | Heat removal |
+| Heat Exchanger | 15 €€ | 800°C | Fast heat transfer |
+| Turbine | 25 €€ | 300°C | Heat → Power |
+| Substation | 50 €€ | 80°C | Power → €€ |
+| Void Cell | (secret) | ∞ | Extreme cooling |
+| Ice Cube | (secret) | (low) | Emergency cooling |
 
 ### Key Design Points
 
