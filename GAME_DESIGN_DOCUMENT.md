@@ -17,6 +17,7 @@ A nuclear reactor management incremental/idle game where players build and manag
 7. [Upgrades](#7-upgrades)
 8. [Secrets & Achievements](#8-secrets--achievements)
 9. [Progression](#9-progression)
+10. [Technical & UI](#10-technical--ui)
 
 ---
 
@@ -420,6 +421,61 @@ The development team is encouraged to add new secrets if they have good ideas th
 *To be implemented in future updates.*
 
 Planned direction: New Game+ mechanics with bonuses, new structures, and new upgrades in subsequent runs. For initial release, leave the endgame open.
+
+---
+
+## 10. Technical & UI
+
+### Platform
+
+The game is a **PWA (Progressive Web App)** built with HTML5. It should:
+- Work offline after initial load
+- Be installable on mobile and desktop
+- Support touch and mouse input
+
+### UI Philosophy
+
+**Don't overexplain.** The UI should:
+- Encourage players to experiment and see what happens
+- Use visual feedback rather than text explanations
+- Let players discover mechanics through play
+- Show, don't tell
+
+### Icons & Symbols
+
+Use suitable icons for structures and UI elements. Prefer **Unicode symbols** where appropriate:
+
+| Element | Suggested Icons |
+|---------|-----------------|
+| Fuel Rod | ☢ ⚛ |
+| Ventilator | ❄ 🌀 |
+| Heat Exchanger | ⇄ ↔ |
+| Insulator | ▣ ◼ |
+| Turbine | ⚡ ⟳ |
+| Substation | € 💰 |
+| Temperature | 🌡 ° |
+| Power | ⚡ |
+| Heat/Fire | 🔥 |
+
+Development team may choose different icons that fit the visual style.
+
+### Options Menu
+
+The options menu should include:
+
+| Option | Description |
+|--------|-------------|
+| **Update** | Check for and apply game updates (if available) |
+| **Save** | Manual save to storage |
+| **Load** | Load saved game |
+| **Autosave** | Toggle automatic saving (on/off) |
+| **Reset** | Start fresh (with confirmation) |
+
+### Data Persistence
+
+- Game state saved to browser localStorage (or IndexedDB)
+- Autosave at regular intervals when enabled
+- Export/import save data (optional, for backup)
 
 ---
 
